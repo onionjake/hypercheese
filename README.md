@@ -8,11 +8,11 @@ organize large photo collections from multiple sources.
 
 ### Installation
 
-#### Ubuntu 14.04
+#### Ubuntu 22.04
 ```bash
 $ git clone https://github.com/jewel/hypercheese.git
 $ cd hypercheese
-$ sudo apt-get install bundler ruby-dev libmysqlclient-dev libsqlite3-dev build-essential nodejs libcurl4-openssl-dev
+$ sudo apt-get install ruby-full ruby-bundler libmysqlclient-dev libsqlite3-dev build-essential nodejs libcurl4-openssl-dev
 $ bundle install
 $ rake secret > .secret_key_base
 # seed the database with the default user:pwd of admin@example.com:password
@@ -27,7 +27,7 @@ $ rails server
 Import your existing photos like this:
 
 ```bash
-$ sudo apt-get install imagemagick libjpeg-turbo-progs
+$ sudo apt-get install imagemagick libjpeg-turbo-progs libimage-exiftool-perl ffmpeg
 # photos must exist in ./originals/, so use a symlink to get them there
 $ ln -s ~/Pictures originals/${USER}_pictures
 
