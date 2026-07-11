@@ -166,6 +166,10 @@ class Search
       items = items.where 'id in ( select item_id from stars where user_id = ? )', @query[:current_user].id
     end
 
+    if @query[:bullhorned]
+      items = items.where 'id in ( select item_id from bullhorns )'
+    end
+
     if @query[:source]
       sources = @query[:source].map do |s|
         source = Source.where( label: s.to_s ).first

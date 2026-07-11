@@ -8,6 +8,7 @@ class @SearchQuery
     unjudged: true
     has_comments: true
     starred: true
+    bullhorned: true
     faces: true
 
   @options:
