@@ -48,12 +48,44 @@ Then scan the QR code with the Expo Go app, or press `i` / `a` for a
 simulator. Sign in with your HyperCheese server address, username, and
 password.
 
-For a real install on family phones, build with EAS:
+## Android releases and installing with Obtainium
+
+Every push to `master` that touches `instacheese/` runs the
+`Build InstaCheese APK` workflow, which builds a release-signed APK and
+publishes it as a GitHub release (tagged `v1.0.<build number>`). Install and
+auto-update it on Android with [Obtainium](https://github.com/ImranR98/Obtainium):
+add an app and give it this repository's URL — Obtainium grabs the APK from
+the latest release and notifies you when a new one appears.
+
+### One-time signing setup
+
+Master builds are signed with a real release keystore and **fail if the
+signing secrets are missing**. Generate a keystore and store it in the
+repository's Actions secrets:
 
 ```bash
-npx eas build --platform ios     # TestFlight
-npx eas build --platform android # APK / Play Store
+# 1. Generate a keystore (pick your own password; keep the file safe —
+#    losing it means family phones must uninstall/reinstall to update)
+keytool -genkeypair -v -keystore instacheese-release.keystore \
+  -alias instacheese -keyalg RSA -keysize 2048 -validity 10000 \
+  -dname "CN=InstaCheese"
+
+# 2. Store the secrets (from the repo directory, using the gh CLI)
+base64 -w0 instacheese-release.keystore | gh secret set ANDROID_KEYSTORE_BASE64
+gh secret set ANDROID_KEYSTORE_PASSWORD   # paste the keystore password
+gh secret set ANDROID_KEY_ALIAS --body "instacheese"
+gh secret set ANDROID_KEY_PASSWORD        # paste the key password (same as
+                                          # the keystore password unless you
+                                          # chose a separate one)
 ```
+
+Manual runs of the workflow on other branches (via workflow_dispatch) still
+build an APK and upload it as a run artifact without creating a release;
+without the secrets those builds fall back to debug signing, so an APK from
+one can't update an installed release-signed app — uninstall first when
+switching.
+
+iOS remains manual for now: `npx eas build --platform ios` → TestFlight.
 
 ## Notes
 
