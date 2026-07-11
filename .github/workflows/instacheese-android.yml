@@ -1,0 +1,127 @@
+name: Build InstaCheese APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'instacheese/**'
+      - '.github/workflows/instacheese-android.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: instacheese-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VERSION_NAME: 1.0.${{ github.run_number }}
+  VERSION_CODE: ${{ github.run_number }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: instacheese
+    env:
+      HAS_SIGNING_SECRETS: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require signing secrets on master
+        if: github.ref == 'refs/heads/master' && env.HAS_SIGNING_SECRETS != 'true'
+        run: |
+          echo "::error::Master builds must be release-signed, but the signing secrets are missing."
+          echo "Set ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD"
+          echo "in the repository's Actions secrets (see instacheese/README.md)."
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: instacheese/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Android project
+        run: npx expo prebuild --platform android --no-install
+        env:
+          CI: 1
+
+      # Gradle merges repeated android {} blocks, so appending is a clean way
+      # to override the version and signing of the generated project.
+      - name: Set version
+        run: |
+          cat >> android/app/build.gradle <<EOF
+
+          android {
+              defaultConfig {
+                  versionCode $VERSION_CODE
+                  versionName "$VERSION_NAME"
+              }
+          }
+          EOF
+
+      - name: Configure release signing
+        if: env.HAS_SIGNING_SECRETS == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          cat >> android/app/build.gradle <<'EOF'
+
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file('release.keystore')
+                      storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                      keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                      keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          EOF
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease --no-daemon
+        working-directory: instacheese/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk instacheese.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: instacheese-apk
+          path: instacheese/instacheese.apk
+          if-no-files-found: error
+
+      - name: Create release
+        if: github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION_NAME }}
+          name: InstaCheese ${{ env.VERSION_NAME }}
+          generate_release_notes: true
+          make_latest: true
+          files: instacheese/instacheese.apk
