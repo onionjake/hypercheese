@@ -22,11 +22,19 @@ Built with [Expo](https://expo.dev) / React Native (TypeScript, expo-router).
 
 ## Server requirements
 
-The app talks to a HyperCheese server that includes the API token support
-added alongside this app (JWT device tokens from `/files/auth` are accepted
-as `Authorization: Bearer` on `/api` endpoints, and a `Source` is
+The app works best against a HyperCheese server that includes the API token
+support added alongside this app (JWT device tokens from `/files/auth` are
+accepted as `Authorization: Bearer` on `/api` endpoints, and a `Source` is
 auto-created for InstaCheese devices so uploads are imported and published
 automatically).
+
+**Compatibility mode:** against an older server, sign-in gracefully falls
+back to a browser-style Devise session (cookie + CSRF token, exactly like
+the web app). Browsing, bullhorns, stars, and comments all work; only
+uploading is disabled, because an un-upgraded server would store the bytes
+but never import them into the gallery. The profile and upload screens say
+so when this mode is active — sign out and back in after upgrading the
+server to switch to token mode.
 
 ## Development
 

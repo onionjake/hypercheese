@@ -1,8 +1,13 @@
 import type { Comment, CurrentUser, FeedItem, FeedPage, ItemDetails, Tag } from './types';
 
+// 'token' — the upgraded backend accepts the device JWT on /api endpoints.
+// 'session' — older backend: Devise session cookie + CSRF token, like the web app.
+export type AuthMode = 'token' | 'session';
+
 export interface Session {
   baseUrl: string;
-  token: string;
+  mode: AuthMode;
+  token: string | null;
 }
 
 export class ApiError extends Error {
@@ -25,16 +30,66 @@ export function normalizeBaseUrl(input: string): string {
   return url;
 }
 
+// --- CSRF support for session mode -----------------------------------------
+// Older backends protect /api writes with Rails CSRF. We do what the web app
+// does: read <meta name="csrf-token"> from an HTML page and send it as
+// X-CSRF-Token. The token is cached per server and refreshed on failure.
+
+const csrfTokens = new Map<string, string>();
+
+function extractCsrfToken(html: string): string | null {
+  const meta = html.match(/<meta[^>]+name="csrf-token"[^>]+content="([^"]+)"/);
+  if (meta) return meta[1];
+  const metaReversed = html.match(/<meta[^>]+content="([^"]+)"[^>]+name="csrf-token"/);
+  if (metaReversed) return metaReversed[1];
+  const input = html.match(/name="authenticity_token"[^>]+value="([^"]+)"/);
+  return input ? input[1] : null;
+}
+
+async function fetchCsrfToken(baseUrl: string, path = '/'): Promise<string> {
+  const res = await fetch(baseUrl + path, { credentials: 'include' });
+  const html = await res.text();
+  const token = extractCsrfToken(html);
+  if (!token) throw new ApiError(res.status, 'Could not find CSRF token');
+  csrfTokens.set(baseUrl, token);
+  return token;
+}
+
 async function request<T>(session: Session, path: string, init: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-    Authorization: `Bearer ${session.token}`,
-    ...((init.headers as Record<string, string>) || {}),
+  const method = (init.method || 'GET').toUpperCase();
+
+  const doFetch = async (csrfToken: string | null) => {
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      ...((init.headers as Record<string, string>) || {}),
+    };
+    if (session.mode === 'token' && session.token) {
+      headers.Authorization = `Bearer ${session.token}`;
+    }
+    if (csrfToken) {
+      headers['X-CSRF-Token'] = csrfToken;
+    }
+    if (typeof init.body === 'string' && !headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
+    return fetch(session.baseUrl + path, { ...init, credentials: 'include', headers });
   };
-  if (typeof init.body === 'string' && !headers['Content-Type']) {
-    headers['Content-Type'] = 'application/json';
+
+  const needsCsrf = session.mode === 'session' && method !== 'GET';
+  let csrfToken: string | null = null;
+  if (needsCsrf) {
+    csrfToken = csrfTokens.get(session.baseUrl) ?? (await fetchCsrfToken(session.baseUrl));
   }
-  const res = await fetch(session.baseUrl + path, { ...init, headers });
+
+  let res = await doFetch(csrfToken);
+
+  // A failed write in session mode is usually a stale CSRF token — refresh
+  // it once and retry.
+  if (!res.ok && needsCsrf) {
+    csrfToken = await fetchCsrfToken(session.baseUrl);
+    res = await doFetch(csrfToken);
+  }
+
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new ApiError(res.status, text || `Request failed (${res.status})`);
@@ -42,7 +97,7 @@ async function request<T>(session: Session, path: string, init: RequestInit = {}
   return (await res.json()) as T;
 }
 
-export async function login(
+export async function tokenLogin(
   baseUrl: string,
   username: string,
   password: string,
@@ -70,6 +125,51 @@ export async function login(
   }
   const json = (await res.json()) as { token: string };
   return json.token;
+}
+
+// Sign in the way a browser does: fetch the Devise form for a CSRF token,
+// then POST the credentials. React Native's networking stack stores the
+// session cookie automatically, so later /api requests are authenticated.
+export async function sessionLogin(
+  baseUrl: string,
+  username: string,
+  password: string
+): Promise<void> {
+  const csrfToken = await fetchCsrfToken(baseUrl, '/users/sign_in');
+  const form = new URLSearchParams({
+    authenticity_token: csrfToken,
+    'user[login]': username,
+    'user[password]': password,
+    'user[remember_me]': '1',
+  });
+  const res = await fetch(`${baseUrl}/users/sign_in`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
+  });
+  if (!res.ok && res.status !== 302) {
+    throw new ApiError(res.status, 'Could not sign in');
+  }
+  // Signing in rotates the Rails session, so any cached CSRF token is stale.
+  csrfTokens.delete(baseUrl);
+  // Success and failure both end as a 200 HTML page after redirects, so the
+  // caller confirms the session by fetching the current user.
+}
+
+export async function sessionLogout(session: Session): Promise<void> {
+  try {
+    const csrfToken = await fetchCsrfToken(session.baseUrl);
+    await fetch(`${session.baseUrl}/users/sign_out`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { 'X-CSRF-Token': csrfToken },
+    });
+  } catch {
+    // Best effort — local state is cleared regardless.
+  } finally {
+    csrfTokens.delete(session.baseUrl);
+  }
 }
 
 export async function fetchCurrentUser(session: Session): Promise<CurrentUser> {

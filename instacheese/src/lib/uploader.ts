@@ -72,6 +72,9 @@ export function prepareFiles(assets: ImagePickerAsset[]): UploadFile[] {
 }
 
 function authHeaders(session: Session): Record<string, string> {
+  if (!session.token) {
+    throw new Error('Uploading requires the upgraded HyperCheese server');
+  }
   return {
     Authorization: `Bearer ${session.token}`,
     'X-API-Version': '1.0',

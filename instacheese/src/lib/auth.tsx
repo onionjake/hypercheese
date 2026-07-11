@@ -27,7 +27,10 @@ async function loadStored(): Promise<StoredSession | null> {
     const raw = await SecureStore.getItemAsync(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as StoredSession;
-    if (!parsed.baseUrl || !parsed.token) return null;
+    if (!parsed.baseUrl) return null;
+    // Sessions stored by older app versions predate `mode`.
+    parsed.mode ??= 'token';
+    if (parsed.mode === 'token' && !parsed.token) return null;
     return parsed;
   } catch {
     return null;
@@ -48,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setStatus('signedOut');
         return;
       }
-      setSession({ baseUrl: stored.baseUrl, token: stored.token });
+      setSession({ baseUrl: stored.baseUrl, mode: stored.mode, token: stored.token });
       setUser(stored.user);
       setStatus('signedIn');
       // Refresh the user in the background; sign out if the token was revoked.
@@ -74,30 +77,67 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(async (serverUrl: string, username: string, password: string) => {
     const baseUrl = api.normalizeBaseUrl(serverUrl);
     const nickname = `InstaCheese on ${Platform.OS}`;
-    const token = await api.login(baseUrl, username, password, nickname, Platform.OS);
-    const newSession: Session = { baseUrl, token };
-    let freshUser: CurrentUser | null = null;
+
+    // Preferred path: a device JWT that the upgraded backend accepts on /api.
+    let token: string | null = null;
     try {
-      freshUser = await api.fetchCurrentUser(newSession);
-    } catch {
-      // The server may not have API token auth deployed yet; the token is
-      // still valid for uploads, so continue signed in.
+      token = await api.tokenLogin(baseUrl, username, password, nickname, Platform.OS);
+    } catch (err) {
+      if (err instanceof api.ApiError && err.status === 401) {
+        throw new Error('Invalid username or password');
+      }
+      // Anything else (404, 500, proxy errors) just means the token endpoint
+      // isn't usable — fall through to a browser-style session login.
     }
-    await SecureStore.setItemAsync(
-      STORAGE_KEY,
-      JSON.stringify({ ...newSession, user: freshUser })
-    );
-    setSession(newSession);
-    setUser(freshUser);
-    setStatus('signedIn');
+
+    if (token) {
+      const tokenSession: Session = { baseUrl, mode: 'token', token };
+      try {
+        const freshUser = await api.fetchCurrentUser(tokenSession);
+        await persist(tokenSession, freshUser);
+        return;
+      } catch (err) {
+        if (!(err instanceof api.ApiError && err.status === 401)) {
+          throw err instanceof Error ? err : new Error('Could not reach the server');
+        }
+        // 401 with a fresh token: the backend doesn't accept API tokens yet.
+      }
+    }
+
+    // Fallback for servers without the API token support: Devise session.
+    await api.sessionLogin(baseUrl, username, password);
+    const sessionSession: Session = { baseUrl, mode: 'session', token };
+    let freshUser: CurrentUser;
+    try {
+      freshUser = await api.fetchCurrentUser(sessionSession);
+    } catch (err) {
+      if (err instanceof api.ApiError && err.status === 401) {
+        throw new Error('Invalid username or password');
+      }
+      throw err instanceof Error ? err : new Error('Could not sign in');
+    }
+    await persist(sessionSession, freshUser);
+
+    async function persist(newSession: Session, newUser: CurrentUser | null) {
+      await SecureStore.setItemAsync(
+        STORAGE_KEY,
+        JSON.stringify({ ...newSession, user: newUser })
+      );
+      setSession(newSession);
+      setUser(newUser);
+      setStatus('signedIn');
+    }
   }, []);
 
   const signOut = useCallback(async () => {
+    if (session?.mode === 'session') {
+      await api.sessionLogout(session);
+    }
     await SecureStore.deleteItemAsync(STORAGE_KEY);
     setSession(null);
     setUser(null);
     setStatus('signedOut');
-  }, []);
+  }, [session]);
 
   const value = useMemo(
     () => ({ status, session, user, signIn, signOut }),

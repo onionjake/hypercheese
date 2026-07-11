@@ -28,6 +28,12 @@ export default function ProfileScreen() {
             Read-only account — ask your admin for upload access.
           </Text>
         ) : null}
+        {session?.mode === 'session' ? (
+          <Text style={[styles.subtle, { color: palette.subtleText, marginTop: 8, textAlign: 'center' }]}>
+            Compatibility mode — this server doesn&apos;t support app uploads
+            yet. Sign out and back in after it&apos;s upgraded.
+          </Text>
+        ) : null}
 
         <Pressable
           style={[styles.button, { borderColor: palette.border }]}
