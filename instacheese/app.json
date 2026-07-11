@@ -9,9 +9,11 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.hypercheese.instacheese"
     },
     "android": {
+      "package": "com.hypercheese.instacheese",
       "adaptiveIcon": {
         "backgroundColor": "#F5A623",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
