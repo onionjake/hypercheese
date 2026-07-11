@@ -50,6 +50,20 @@ class FilesController < ApplicationController
       client_software: info[:client_software],
       client_version: info[:client_version]
     )
+
+    # Mobile app devices get a source right away so their uploads are
+    # imported into the gallery without manual setup.
+    if info[:client_software] == 'instacheese'
+      Source.create!(
+        label: "InstaCheese: #{user.username}",
+        path: "instacheese/#{device.uuid}",
+        user: user,
+        device: device,
+        default_published_state: true,
+        show_on_home: true
+      )
+    end
+
     payload = { user_id: user.id, device: device.uuid }
     token = JWT.encode payload, Rails.application.credentials.secret_key_base
     render json: { token: token }

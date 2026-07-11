@@ -1,8 +1,41 @@
 class ApplicationController < ActionController::Base
   protect_from_forgery
   before_action :configure_permitted_parameters, if: :devise_controller?
+  before_action :authenticate_user_from_token!
   before_action :authenticate_user!
   before_action :verify_approval!
+
+  # Native clients (e.g. the InstaCheese mobile app) authenticate with the
+  # same device JWT issued by /files/auth instead of a session cookie.
+  def authenticate_user_from_token!
+    return if user_signed_in?
+    user, _device = api_token_credentials
+    return unless user
+    request.env['devise.skip_trackable'] = true
+    sign_in user, store: false
+  end
+
+  def api_token_credentials
+    return @api_token_credentials if defined? @api_token_credentials
+    @api_token_credentials = nil
+    token = request.headers['Authorization']&.split(' ')&.last
+    return nil unless token
+    begin
+      payload = JWT.decode(token, Rails.application.credentials.secret_key_base).first
+      user = User.find_by id: payload['user_id']
+      device = Device.find_by uuid: payload['device']
+      if user && device && device.user_id == user.id
+        @api_token_credentials = [user, device]
+      end
+    rescue JWT::DecodeError
+    end
+    @api_token_credentials
+  end
+
+  # Token-authenticated requests carry no session, so CSRF does not apply.
+  def verified_request?
+    super || api_token_credentials.present?
+  end
 
   def verify_approval!
     raise "Attempting to verify before authenticated" unless current_user
