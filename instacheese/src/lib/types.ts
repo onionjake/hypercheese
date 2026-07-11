@@ -27,6 +27,9 @@ export interface ItemDetails {
   ages: Record<string, string>;
   locations: string[];
   places: string[];
+  paths: string[];
+  pretty_size: string | null;
+  exif: Record<string, unknown> | null;
   comments: Comment[];
 }
 

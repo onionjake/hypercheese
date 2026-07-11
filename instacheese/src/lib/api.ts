@@ -178,7 +178,13 @@ export async function fetchCurrentUser(session: Session): Promise<CurrentUser> {
 
 export async function fetchFeed(
   session: Session,
-  opts: { searchKey?: string; offset?: number; limit?: number; query?: string } = {}
+  opts: {
+    searchKey?: string;
+    offset?: number;
+    limit?: number;
+    query?: string;
+    bullhorned?: boolean;
+  } = {}
 ): Promise<FeedPage> {
   const params = new URLSearchParams();
   params.set('search_key', opts.searchKey ?? '');
@@ -187,6 +193,11 @@ export async function fetchFeed(
   if (opts.query) {
     // Free-form text becomes a CLIP similarity search on the server.
     params.set('query[clip]', opts.query);
+  }
+  if (opts.bullhorned) {
+    // Only items someone bullhorned. Requires the upgraded backend; older
+    // servers ignore the param and return everything.
+    params.set('query[bullhorned]', '1');
   }
   const json = await request<{
     items: FeedItem[];
