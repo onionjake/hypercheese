@@ -195,8 +195,7 @@ export async function fetchFeed(
     params.set('query[clip]', opts.query);
   }
   if (opts.bullhorned) {
-    // Only items someone bullhorned. Requires the upgraded backend; older
-    // servers ignore the param and return everything.
+    // Only items someone bullhorned.
     params.set('query[bullhorned]', '1');
   }
   const json = await request<{

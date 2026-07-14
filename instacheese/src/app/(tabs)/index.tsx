@@ -29,10 +29,7 @@ export default function FeedScreen() {
   const router = useRouter();
   const tags = useTagMap(session);
 
-  // The bullhorned filter needs the upgraded backend; older servers would
-  // silently return everything, so only offer it in token mode.
-  const canFilterBullhorns = session?.mode === 'token';
-  const [mode, setMode] = useState<FeedMode>(canFilterBullhorns ? 'bullhorns' : 'all');
+  const [mode, setMode] = useState<FeedMode>('bullhorns');
 
   const [items, setItems] = useState<FeedItem[]>([]);
   const [searchKey, setSearchKey] = useState('');
@@ -148,12 +145,10 @@ export default function FeedScreen() {
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
       <View style={[styles.titleBar, { borderColor: palette.border }]}>
         <Text style={[styles.title, { color: palette.text }]}>🧀 InstaCheese</Text>
-        {canFilterBullhorns ? (
-          <View style={styles.modeRow}>
-            {modeButton('bullhorns', 'megaphone', 'Bullhorns')}
-            {modeButton('all', 'albums-outline', 'Everything')}
-          </View>
-        ) : null}
+        <View style={styles.modeRow}>
+          {modeButton('bullhorns', 'megaphone', 'Bullhorns')}
+          {modeButton('all', 'albums-outline', 'Everything')}
+        </View>
       </View>
       {error && items.length === 0 ? (
         <View style={styles.center}>
