@@ -1,3 +1,14 @@
+export interface FeedComment {
+  text: string;
+  username: string | null;
+  created_at: string;
+}
+
+export interface FeedSource {
+  label: string | null;
+  user_name: string | null;
+}
+
 export interface FeedItem {
   id: number;
   code: string;
@@ -7,6 +18,11 @@ export interface FeedItem {
   bullhorned: boolean;
   rating: number | null;
   tag_ids: number[];
+  // Optional: servers older than the feed-metadata upgrade omit these.
+  taken?: string | null;
+  comment_count?: number;
+  first_comment?: FeedComment | null;
+  source?: FeedSource | null;
 }
 
 export interface Comment {

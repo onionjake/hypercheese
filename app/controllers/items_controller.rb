@@ -41,7 +41,7 @@ class ItemsController < ApplicationController
       subset = str.unpack 'V*'
     end
 
-    res = Item.includes(:comments, :tags, :stars, :bullhorns, :ratings).find subset
+    res = Item.includes({ comments: :user }, { sources: :user }, :tags, :stars, :bullhorns, :ratings).find subset
 
     # `find` returns unordered, sort according to desired order
     items_by_id = {}
