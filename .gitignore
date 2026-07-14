@@ -38,6 +38,7 @@
 /storage
 
 /config/credentials/*.key
+/config/fcm-service-account.json
 
 /app/assets/builds/
 /node_modules/

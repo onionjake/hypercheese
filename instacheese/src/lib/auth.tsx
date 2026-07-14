@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 
 import * as api from './api';
 import type { Session } from './api';
+import { unregisterForPushNotifications } from './notifications';
 import type { CurrentUser } from './types';
 
 const STORAGE_KEY = 'instacheese.session';
@@ -130,6 +131,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    if (session) {
+      // Stop notifications for this device before the session goes away.
+      await unregisterForPushNotifications(session);
+    }
     if (session?.mode === 'session') {
       await api.sessionLogout(session);
     }

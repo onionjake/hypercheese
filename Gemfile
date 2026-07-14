@@ -40,6 +40,9 @@ gem 'delayed_job_active_record'
 
 gem 'jwt'
 
+# For FCM push notifications (InstaCheese)
+gem 'googleauth'
+
 gem 'RubyInline', require: 'inline'
 
 gem 'httparty'

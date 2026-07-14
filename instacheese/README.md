@@ -20,6 +20,9 @@ Built with [Expo](https://expo.dev) / React Native (TypeScript, expo-router).
   use HyperCheese's dedupe-aware `/files` API, so re-uploading something the
   server already has is instant.
 - **Videos** — play in the detail view via the server's streaming MP4.
+- **Push notifications** (Android) — get notified when anyone bullhorns a
+  photo; tapping the notification opens it. Requires the one-time Firebase
+  setup below.
 - Dark mode follows your system setting.
 
 ## Server requirements
@@ -88,6 +91,41 @@ one can't update an installed release-signed app — uninstall first when
 switching.
 
 iOS remains manual for now: `npx eas build --platform ios` → TestFlight.
+
+## Push notifications (one-time Firebase setup)
+
+When someone bullhorns a photo, the server pushes a notification to every
+other signed-in device through Firebase Cloud Messaging (FCM). Delivery
+needs Google Play Services on the phone; sideloading via Obtainium is fine.
+Android only for now — iOS would additionally need APNs wiring.
+
+Both halves are optional: an APK built without the Firebase config simply
+has push disabled, and a server without the service-account key skips
+sending. To turn it on:
+
+1. Create a project at <https://console.firebase.google.com>, then add an
+   **Android app** with package name `com.hypercheese.instacheese` and
+   download its `google-services.json`.
+2. Give the APK build the config (it's baked into the app at build time):
+
+   ```bash
+   base64 -w0 google-services.json | gh secret set GOOGLE_SERVICES_JSON_BASE64
+   ```
+
+   Master builds fail without this secret, like the signing secrets. For
+   local testing, drop `google-services.json` into `instacheese/` instead —
+   it's gitignored.
+3. Give the HyperCheese server the sending credentials: in the Firebase
+   console go to **Project settings → Service accounts → Generate new
+   private key**, and save the downloaded JSON on the server as
+   `config/fcm-service-account.json` (also gitignored), or set
+   `FCM_SERVICE_ACCOUNT=/path/to/key.json`. Then
+   `bundle install && rake db:migrate` and restart, including the
+   delayed_job workers, which do the actual sending.
+
+Devices register their FCM token with the server when the app starts
+(`POST /api/push_tokens`) and unregister on sign-out; tokens FCM reports as
+dead are pruned automatically after the next bullhorn.
 
 ## Notes
 

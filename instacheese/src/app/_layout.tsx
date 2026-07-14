@@ -1,14 +1,16 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider, useRouter, useSegments } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { itemIdFromResponse, registerForPushNotifications } from '@/lib/notifications';
 
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
-  const { status } = useAuth();
+  const { status, session } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -22,6 +24,22 @@ function RootNavigator() {
       router.replace('/');
     }
   }, [status, segments, router]);
+
+  useEffect(() => {
+    if (status === 'signedIn' && session) {
+      registerForPushNotifications(session);
+    }
+  }, [status, session]);
+
+  // Tapping a bullhorn notification opens the item it's about.
+  const notificationResponse = Notifications.useLastNotificationResponse();
+  useEffect(() => {
+    if (status !== 'signedIn') return;
+    const itemId = itemIdFromResponse(notificationResponse);
+    if (itemId) {
+      router.push({ pathname: '/item/[id]', params: { id: String(itemId) } });
+    }
+  }, [notificationResponse, status, router]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

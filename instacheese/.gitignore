@@ -9,6 +9,9 @@ dist/
 web-build/
 expo-env.d.ts
 
+# Firebase config for push notifications (CI writes it from a secret)
+google-services.json
+
 # Native
 .kotlin/
 *.orig.*

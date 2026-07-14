@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2025_09_25_053707) do
+ActiveRecord::Schema[7.2].define(version: 2026_07_14_000001) do
   create_table "bullhorns", id: :integer, charset: "latin1", collation: "latin1_swedish_ci", force: :cascade do |t|
     t.integer "user_id", null: false
     t.integer "item_id", null: false
@@ -199,6 +199,16 @@ ActiveRecord::Schema[7.2].define(version: 2025_09_25_053707) do
     t.index ["created_by"], name: "index_places_on_created_by"
     t.index ["latitude", "longitude"], name: "index_places_on_latitude_and_longitude"
     t.index ["name"], name: "index_places_on_name"
+  end
+
+  create_table "push_tokens", charset: "latin1", collation: "latin1_swedish_ci", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.string "token", limit: 512, null: false
+    t.string "platform", default: "android", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["token"], name: "index_push_tokens_on_token", unique: true
+    t.index ["user_id"], name: "index_push_tokens_on_user_id"
   end
 
   create_table "ratings", id: :integer, charset: "latin1", collation: "latin1_swedish_ci", force: :cascade do |t|

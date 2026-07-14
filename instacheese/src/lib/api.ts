@@ -237,6 +237,24 @@ export async function postComment(session: Session, itemId: number, text: string
   return json.comment;
 }
 
+export async function registerPushToken(
+  session: Session,
+  token: string,
+  platform: string
+): Promise<void> {
+  await request(session, '/api/push_tokens', {
+    method: 'POST',
+    body: JSON.stringify({ token, platform }),
+  });
+}
+
+export async function unregisterPushToken(session: Session, token: string): Promise<void> {
+  await request(session, '/api/push_tokens', {
+    method: 'DELETE',
+    body: JSON.stringify({ token }),
+  });
+}
+
 export async function fetchTags(session: Session): Promise<Tag[]> {
   const json = await request<{ tags: Tag[] }>(session, '/api/tags');
   return json.tags;

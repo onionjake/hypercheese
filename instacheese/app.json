@@ -31,6 +31,13 @@
       "expo-secure-store",
       "expo-video",
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#F5A623"
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "InstaCheese uses your photo library so you can share photos and videos with your family."
