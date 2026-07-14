@@ -113,6 +113,7 @@ component 'NavBar', ({showingResults, initialSearch}) ->
               if Store.state.isAdmin
                 <li><Link className="dropdown-item" href="/admin">Admin</Link></li>
             }
+            <NotificationsMenuItem/>
             <li>
               <a className="dropdown-item" href="https://www.rickety.us/sundry/hypercheese-help/">Help</a>
             </li>

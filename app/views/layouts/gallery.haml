@@ -11,6 +11,8 @@
     %title= @title || "HyperCheese"
     = stylesheet_link_tag "index", :media => "all"
     = csrf_meta_tags
+    - if WebPushSender.configured?
+      %meta(name="vapid-public-key" content=WebPushSender.public_key)
   %body
     #content
       Making cheese...

@@ -34,3 +34,23 @@ $ ln -s ~/Pictures originals/${USER}_pictures
 # Make sure to put a trailing slash at the end of your path!
 $ bundle exec script/import originals/${USER}_pictures/
 ```
+
+### Push notifications
+
+When someone bullhorns a photo, HyperCheese can push a notification to the
+[InstaCheese](instacheese/README.md) mobile app (via Firebase Cloud
+Messaging — see that README for setup) and to web browsers (via Web Push).
+Both are optional and independent.
+
+To enable browser notifications, generate a VAPID key pair once:
+
+```bash
+$ bundle exec rails runner 'k = WebPush.generate_key; puts "VAPID_PUBLIC_KEY=#{k.public_key}", "VAPID_PRIVATE_KEY=#{k.private_key}"'
+```
+
+and set those two environment variables (plus optionally `VAPID_SUBJECT`, a
+`mailto:` address identifying you to the push services) for the Rails server
+and the delayed_job workers, then restart both and run `rake db:migrate`.
+Each family member can then turn notifications on from the ⋮ menu → "Enable
+notifications" (the menu item only appears when the server has the keys, and
+the site must be served over HTTPS for browsers to allow it).

@@ -43,6 +43,10 @@ gem 'jwt'
 # For FCM push notifications (InstaCheese)
 gem 'googleauth'
 
+# For browser push notifications (VAPID).  3.1 forces jwt 3.x, which the
+# device-token auth in files_controller hasn't been tested against.
+gem 'web-push', '~> 3.0.0'
+
 gem 'RubyInline', require: 'inline'
 
 gem 'httparty'

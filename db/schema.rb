@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_07_14_000001) do
+ActiveRecord::Schema[7.2].define(version: 2026_07_14_000002) do
   create_table "bullhorns", id: :integer, charset: "latin1", collation: "latin1_swedish_ci", force: :cascade do |t|
     t.integer "user_id", null: false
     t.integer "item_id", null: false
@@ -297,5 +297,16 @@ ActiveRecord::Schema[7.2].define(version: 2026_07_14_000001) do
     t.index ["reset_password_token"], name: "index_users_on_reset_password_token", unique: true
     t.index ["sponsor_id"], name: "index_users_on_sponsor_id"
     t.index ["username"], name: "index_users_on_username", unique: true
+  end
+
+  create_table "web_push_subscriptions", charset: "latin1", collation: "latin1_swedish_ci", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.string "endpoint", limit: 512, null: false
+    t.string "p256dh", null: false
+    t.string "auth", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["endpoint"], name: "index_web_push_subscriptions_on_endpoint", unique: true
+    t.index ["user_id"], name: "index_web_push_subscriptions_on_user_id"
   end
 end

@@ -127,6 +127,10 @@ Devices register their FCM token with the server when the app starts
 (`POST /api/push_tokens`) and unregister on sign-out; tokens FCM reports as
 dead are pruned automatically after the next bullhorn.
 
+The HyperCheese web app can also notify browsers directly via Web Push —
+that's configured separately on the server (no Firebase needed) and is
+documented in the [main README](../README.md#push-notifications).
+
 ## Notes
 
 - Sign-in uses your HyperCheese **username** (not email).

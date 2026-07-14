@@ -36,6 +36,9 @@ HyperCheese::Application.routes.draw do
     post 'push_tokens', to: 'push_tokens#create'
     delete 'push_tokens', to: 'push_tokens#destroy'
 
+    post 'web_push_subscriptions', to: 'web_push_subscriptions#create'
+    delete 'web_push_subscriptions', to: 'web_push_subscriptions#destroy'
+
     resources :tags
     resources :locations, only: [:index]
     get 'users/current', to: 'current_user#current'
