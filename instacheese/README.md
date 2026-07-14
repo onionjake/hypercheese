@@ -8,8 +8,10 @@ Built with [Expo](https://expo.dev) / React Native (TypeScript, expo-router).
 
 ## Features
 
-- **Feed** — the most recent published photos and videos, newest first, with
-  infinite scroll and pull-to-refresh.
+- **Feed** — bullhorned favorites by default (switch to Everything for the
+  full gallery), newest first, with infinite scroll and pull-to-refresh. Each
+  card shows the first comment (with a "View all N comments" link when there
+  are more), who the photo came from, and how long ago it was taken.
 - **Bullhorn** 📢 — HyperCheese's social signal ("tells others about this
   item"); it shows up in the family activity feed. This is the "like" button.
 - **Star** ⭐ — a private bookmark, like Instagram's save.

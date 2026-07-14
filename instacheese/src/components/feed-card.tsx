@@ -7,6 +7,7 @@ import { ActionRow } from './action-row';
 import type { Session } from '@/lib/api';
 import { resizedUrl } from '@/lib/api';
 import { usePalette } from '@/lib/theme';
+import { timeAgo } from '@/lib/time';
 import type { FeedItem } from '@/lib/types';
 
 interface Props {
@@ -31,6 +32,11 @@ export const FeedCard = memo(function FeedCard({
   const palette = usePalette();
   const { width } = useWindowDimensions();
   const imageSize = Math.min(width, 600);
+
+  const author = item.source?.user_name || item.source?.label || null;
+  const when = timeAgo(item.taken);
+  const commentCount = item.comment_count ?? (item.has_comments ? 1 : 0);
+  const firstComment = item.first_comment;
 
   return (
     <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
@@ -60,10 +66,32 @@ export const FeedCard = memo(function FeedCard({
         onToggleStar={() => onToggleStar(item)}
         onPressComments={() => onOpen(item)}
       />
-      {item.has_comments ? (
+      {firstComment ? (
         <Pressable onPress={() => onOpen(item)}>
-          <Text style={[styles.comments, { color: palette.subtleText }]}>View comments</Text>
+          <Text style={[styles.comment, { color: palette.text }]} numberOfLines={2}>
+            {firstComment.username ? (
+              <Text style={styles.commentUser}>{firstComment.username} </Text>
+            ) : null}
+            {firstComment.text}
+          </Text>
         </Pressable>
+      ) : null}
+      {commentCount > 1 ? (
+        <Pressable onPress={() => onOpen(item)}>
+          <Text style={[styles.moreComments, { color: palette.subtleText }]}>
+            View all {commentCount} comments
+          </Text>
+        </Pressable>
+      ) : !firstComment && commentCount > 0 ? (
+        // Older servers only say whether comments exist, not what they are.
+        <Pressable onPress={() => onOpen(item)}>
+          <Text style={[styles.moreComments, { color: palette.subtleText }]}>View comments</Text>
+        </Pressable>
+      ) : null}
+      {author || when ? (
+        <Text style={[styles.meta, { color: palette.subtleText }]} numberOfLines={1}>
+          {[author, when].filter(Boolean).join(' · ')}
+        </Text>
       ) : null}
     </View>
   );
@@ -94,9 +122,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingLeft: 3,
   },
-  comments: {
+  comment: {
+    paddingHorizontal: 12,
+    paddingBottom: 4,
+    fontSize: 14,
+  },
+  commentUser: {
+    fontWeight: '600',
+  },
+  moreComments: {
+    paddingHorizontal: 12,
+    paddingBottom: 4,
+    fontSize: 14,
+  },
+  meta: {
     paddingHorizontal: 12,
     paddingBottom: 12,
-    fontSize: 14,
+    fontSize: 12,
   },
 });
