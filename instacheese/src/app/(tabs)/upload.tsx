@@ -90,16 +90,6 @@ export default function UploadScreen() {
             Your account doesn&apos;t have upload permission yet.
           </Text>
         </View>
-      ) : session?.mode !== 'token' ? (
-        <View style={styles.center}>
-          <Ionicons name="cloud-offline-outline" size={64} color={palette.subtleText} />
-          <Text style={{ color: palette.subtleText, textAlign: 'center', padding: 24 }}>
-            Uploading needs the updated HyperCheese server.{'\n\n'}
-            You&apos;re connected in compatibility mode — browsing, likes, and
-            comments all work, but this server can&apos;t import app uploads
-            yet. Once it&apos;s upgraded, sign out and back in.
-          </Text>
-        </View>
       ) : (
         <>
           <FlatList
