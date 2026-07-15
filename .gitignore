@@ -46,3 +46,5 @@
 !/app/assets/builds/.keep
 
 /node_modules
+
+/config/credentials/production.key
