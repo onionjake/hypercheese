@@ -91,10 +91,13 @@ class FilesController < ApplicationController
       existing_blob = existing_blobs_by_sha[file[:sha256]]
 
       if existing_blob
-        CheeseBlob.create!(
-          user: @user,
-          device: @device,
-          path: file[:path],
+        # The content is already in storage, so no upload is needed. Ensure a
+        # blob row exists for this device+path without colliding on the
+        # (user, device, path) unique index when the file was uploaded before
+        # (mobile clients can't produce a stable mtime, so the manifest check
+        # above often misses and re-sends already-uploaded files).
+        blob = CheeseBlob.find_or_initialize_by(user: @user, device: @device, path: file[:path])
+        blob.update!(
           sha256: file[:sha256].downcase,
           size: file[:size],
           mtime: file[:mtime].to_s,
@@ -138,10 +141,8 @@ class FilesController < ApplicationController
       content_type: content_type
     )
 
-    blob = CheeseBlob.create!(
-      user: @user,
-      device: @device,
-      path: path,
+    blob = CheeseBlob.find_or_initialize_by(user: @user, device: @device, path: path)
+    blob.update!(
       sha256: sha256,
       size: size,
       mtime: mtime,
