@@ -71,6 +71,15 @@ export function prepareFiles(assets: ImagePickerAsset[]): UploadFile[] {
   });
 }
 
+// The server stores mtime as an opaque string of seconds-since-epoch and, on
+// the next manifest, compares it byte-for-byte against what we send. So every
+// request touching a given file (manifest, hashes, upload) must send the exact
+// same representation, in seconds. Match the web uploader: `lastModified / 1000`
+// rendered with String(). `mtime` is held internally in milliseconds.
+function mtimeParam(file: Pick<UploadFile, 'mtime'>): string {
+  return String(file.mtime / 1000);
+}
+
 function authHeaders(session: Session): Record<string, string> {
   if (!session.token) {
     throw new Error('Uploading requires the upgraded HyperCheese server');
@@ -127,7 +136,7 @@ export async function uploadFiles(
   candidates.forEach((f) => update(f, { status: 'checking', error: undefined }));
 
   // Step 1: manifest — the server answers with the paths it doesn't have yet.
-  const manifest = candidates.map((f) => ({ path: f.path, mtime: f.mtime, size: f.size }));
+  const manifest = candidates.map((f) => ({ path: f.path, mtime: mtimeParam(f), size: f.size }));
   // The server refreshes device metadata from these query params on every
   // manifest, so always send them or they get blanked out.
   const deviceParams = new URLSearchParams({
@@ -174,7 +183,7 @@ export async function uploadFiles(
       '/files/hashes',
       hashed.map((f) => ({
         path: f.path,
-        mtime: f.mtime,
+        mtime: mtimeParam(f),
         size: f.size,
         sha256: hashes.get(f.path),
       }))
@@ -202,7 +211,7 @@ export async function uploadFiles(
           headers: {
             ...authHeaders(session),
             'X-Path': file.path,
-            'X-MTime': String(file.mtime),
+            'X-MTime': mtimeParam(file),
             'X-SHA256': hashes.get(file.path)!,
             'X-Size': String(file.size),
           },
