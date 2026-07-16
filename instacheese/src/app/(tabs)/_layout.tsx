@@ -35,6 +35,15 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="library"
+        options={{
+          title: 'Backup',
+          tabBarIcon: ({ color, focused, size }) => (
+            <Ionicons name={focused ? 'images' : 'images-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="sync"
         options={{
           title: 'Sync',
