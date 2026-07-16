@@ -123,11 +123,16 @@ class FilesController < ApplicationController
       return render plain: "SHA256 mismatch (header: #{sha256}, body: #{Digest::SHA256.hexdigest(data)})", status: :bad_request
     end
 
-    # Get content type using file -bi
+    # Get content type using file -bi.  content_type must be assigned before
+    # the block: a variable first assigned inside the block is block-local,
+    # and outside the block `content_type` resolves to the controller's
+    # response.content_type instead of raising.
+    content_type = nil
     Tempfile.open(['upload', '']) do |tempfile|
       tempfile.binmode
       tempfile.write data
-      content_type, status = Open3.capture2 'file', '-bi', tempfile.path
+      tempfile.flush
+      content_type, _status = Open3.capture2 'file', '-bi', tempfile.path
       content_type = content_type.strip
     end
 
