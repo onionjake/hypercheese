@@ -37,6 +37,12 @@
         }
       ],
       [
+        "expo-media-library",
+        {
+          "photosPermission": "InstaCheese reads photo dates so already-uploaded photos can be skipped."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#F5A623",

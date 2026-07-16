@@ -2,6 +2,7 @@ import * as Crypto from 'expo-crypto';
 import { File } from 'expo-file-system';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import type { ImagePickerAsset } from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import { Platform } from 'react-native';
 
 import { CLIENT_VERSION, type Session } from './api';
@@ -44,7 +45,36 @@ function fileNameFor(asset: ImagePickerAsset, index: number): string {
   return `${fromAsset || `instacheese-${Date.now()}-${index}`}.${ext}`;
 }
 
-export function prepareFiles(assets: ImagePickerAsset[]): UploadFile[] {
+// The picker copies each selected asset into a fresh temp file, so the temp
+// file's mtime changes on every pick and can't be used to dedupe re-uploads.
+// Look up the ORIGINAL asset's timestamps in the media library instead —
+// stable across picks, and it's the real photo date, which the server uses
+// for the imported item. Returns null (caller falls back to temp-file info)
+// when the assetId is missing (e.g. Android photo picker) or library
+// permission is denied.
+async function originalMtimes(assets: ImagePickerAsset[]): Promise<(number | null)[]> {
+  if (!assets.some((a) => a.assetId)) return assets.map(() => null);
+  try {
+    const perm = await MediaLibrary.getPermissionsAsync();
+    if (!perm.granted && perm.canAskAgain) await MediaLibrary.requestPermissionsAsync();
+  } catch {
+    // proceed; per-asset lookups below have their own fallback
+  }
+  return Promise.all(
+    assets.map(async (asset) => {
+      if (!asset.assetId) return null;
+      try {
+        const info = await MediaLibrary.getAssetInfoAsync(asset.assetId);
+        return info.modificationTime ?? info.creationTime ?? null;
+      } catch {
+        return null;
+      }
+    })
+  );
+}
+
+export async function prepareFiles(assets: ImagePickerAsset[]): Promise<UploadFile[]> {
+  const libraryMtimes = await originalMtimes(assets);
   return assets.map((asset, index) => {
     const name = fileNameFor(asset, index);
     let size = asset.fileSize ?? 0;
@@ -58,6 +88,7 @@ export function prepareFiles(assets: ImagePickerAsset[]): UploadFile[] {
     } catch {
       // fall back to picker-provided values
     }
+    mtime = libraryMtimes[index] ?? mtime;
     const supported = SUPPORTED_EXTENSIONS.has(extensionOf(name));
     return {
       key: `${asset.assetId ?? asset.uri}-${index}`,
