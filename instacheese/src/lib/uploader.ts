@@ -1,17 +1,15 @@
 import { File } from 'expo-file-system';
-import * as LegacyFileSystem from 'expo-file-system/legacy';
 import type { ImagePickerAsset } from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 
 import { type Session } from './api';
 import {
   SUPPORTED_EXTENSIONS,
-  authHeaders,
-  deviceParams,
+  assetMtime,
   extensionOf,
-  mtimeParam,
-  postJson,
-  sha256OfFile,
+  hashAndUpload,
+  manifestCheck,
+  stablePath,
 } from './upload-protocol';
 
 export type UploadStatus =
@@ -61,7 +59,9 @@ async function originalMtimes(assets: ImagePickerAsset[]): Promise<(number | nul
       if (!asset.assetId) return null;
       try {
         const info = await MediaLibrary.getAssetInfoAsync(asset.assetId);
-        return info.modificationTime ?? info.creationTime ?? null;
+        // Same fallback logic as the sync flows (assetMtime) so every flow
+        // sends the identical mtime for the same asset.
+        return assetMtime(info) || null;
       } catch {
         return null;
       }
@@ -85,11 +85,16 @@ export async function prepareFiles(assets: ImagePickerAsset[]): Promise<UploadFi
       // fall back to picker-provided values
     }
     mtime = libraryMtimes[index] ?? mtime;
+    // Same path scheme as the sync flows: with an assetId the path is unique
+    // and stable across picks, so re-picking the same photo matches the
+    // server's manifest instead of re-hashing. Bare filenames (no assetId)
+    // remain as a fallback but collide on repeated names like IMG_0001.jpg.
+    const path = asset.assetId ? stablePath(asset.assetId, name) : name;
     const supported = SUPPORTED_EXTENSIONS.has(extensionOf(name));
     return {
       key: `${asset.assetId ?? asset.uri}-${index}`,
       asset,
-      path: name,
+      path,
       size,
       mtime: Math.round(mtime),
       status: supported ? 'pending' : 'unsupported',
@@ -98,6 +103,9 @@ export async function prepareFiles(assets: ImagePickerAsset[]): Promise<UploadFi
   });
 }
 
+// Uploads the given files (skipping unsupported ones). Safe to call again
+// with just the failed files — the server manifest is the source of truth, so
+// a retry simply re-runs the protocol for those paths.
 export async function uploadFiles(
   session: Session,
   files: UploadFile[],
@@ -114,85 +122,38 @@ export async function uploadFiles(
   candidates.forEach((f) => update(f, { status: 'checking', error: undefined }));
 
   // Step 1: manifest — the server answers with the paths it doesn't have yet.
-  const manifest = candidates.map((f) => ({ path: f.path, mtime: mtimeParam(f.mtime), size: f.size }));
-  let needed: { path: string }[];
+  let neededPaths: Set<string>;
   try {
-    needed = await postJson<{ path: string }[]>(
-      session,
-      `/files/manifest?${deviceParams()}`,
-      manifest
-    );
+    neededPaths = await manifestCheck(session, candidates);
   } catch (err) {
     candidates.forEach((f) => update(f, { status: 'error', error: String(err) }));
     return;
   }
 
-  const neededPaths = new Set(needed.map((f) => f.path));
-  const toHash = candidates.filter((f) => neededPaths.has(f.path));
   candidates
     .filter((f) => !neededPaths.has(f.path))
     .forEach((f) => update(f, { status: 'already-uploaded' }));
 
-  // Step 2: hash the files the server asked about, one at a time.
-  const hashes = new Map<string, string>();
-  for (const file of toHash) {
-    update(file, { status: 'hashing' });
+  // Steps 2+3: hash and upload one file at a time, so one bad file can't
+  // fail the whole batch and per-file status stays accurate.
+  for (const file of candidates.filter((f) => neededPaths.has(f.path))) {
     try {
-      hashes.set(file.path, await sha256OfFile(file.asset.uri, file.size));
-    } catch (err) {
-      update(file, { status: 'error', error: `Could not read file: ${String(err)}` });
-    }
-  }
-
-  const hashed = toHash.filter((f) => hashes.has(f.path));
-  if (hashed.length === 0) return;
-
-  let toUpload: { path: string }[];
-  try {
-    toUpload = await postJson<{ path: string }[]>(
-      session,
-      '/files/hashes',
-      hashed.map((f) => ({
-        path: f.path,
-        mtime: mtimeParam(f.mtime),
-        size: f.size,
-        sha256: hashes.get(f.path),
-      }))
-    );
-  } catch (err) {
-    hashed.forEach((f) => update(f, { status: 'error', error: String(err) }));
-    return;
-  }
-
-  const uploadPaths = new Set(toUpload.map((f) => f.path));
-  hashed
-    .filter((f) => !uploadPaths.has(f.path))
-    .forEach((f) => update(f, { status: 'already-uploaded' }));
-
-  // Step 3: upload the remaining files one at a time.
-  for (const file of hashed.filter((f) => uploadPaths.has(f.path))) {
-    update(file, { status: 'uploading' });
-    try {
-      const result = await LegacyFileSystem.uploadAsync(
-        `${session.baseUrl}/files/upload`,
-        file.asset.uri,
+      const outcome = await hashAndUpload(
+        session,
         {
-          httpMethod: 'PUT',
-          uploadType: LegacyFileSystem.FileSystemUploadType.BINARY_CONTENT,
-          headers: {
-            ...authHeaders(session),
-            'X-Path': file.path,
-            'X-MTime': mtimeParam(file.mtime),
-            'X-SHA256': hashes.get(file.path)!,
-            'X-Size': String(file.size),
-          },
-        }
+          path: file.path,
+          mtime: file.mtime,
+          size: file.size,
+          localUri: file.asset.uri,
+          // Only cache hashes under a stable identity; picker temp files
+          // without an assetId have none.
+          cacheKey: file.asset.assetId
+            ? `${file.asset.assetId}:${file.mtime}:${file.size}`
+            : null,
+        },
+        (phase) => update(file, { status: phase })
       );
-      if (result.status >= 200 && result.status < 300) {
-        update(file, { status: 'done' });
-      } else {
-        update(file, { status: 'error', error: result.body || `Upload failed (${result.status})` });
-      }
+      update(file, { status: outcome === 'deduped' ? 'already-uploaded' : 'done' });
     } catch (err) {
       update(file, { status: 'error', error: String(err) });
     }

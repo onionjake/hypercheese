@@ -6,12 +6,11 @@ import * as MediaLibrary from 'expo-media-library/legacy';
 import { type Session } from './api';
 import {
   SUPPORTED_EXTENSIONS,
-  authHeaders,
-  deviceParams,
+  assetMtime,
   extensionOf,
-  mtimeParam,
-  postJson,
-  sha256OfFile,
+  hashAndUpload,
+  manifestCheck,
+  stablePath,
 } from './upload-protocol';
 
 // Camera-roll sync: enumerate the media library directly (no picker, no
@@ -48,15 +47,6 @@ interface Candidate {
   mtime: number; // milliseconds since epoch
   size: number;
   localUri: string | null;
-}
-
-// Filenames repeat across a big library (iOS wraps around at IMG_9999), so
-// prefix the library's stable per-asset id to keep the server's
-// (user, device, path) key unique. Keep the filename last so the extension
-// stays visible to the server's importer.
-function stablePath(asset: MediaLibrary.Asset): string {
-  const id = asset.id.replace(/[^A-Za-z0-9_-]/g, '_');
-  return `${id}/${asset.filename}`;
 }
 
 // Looking up localUri + size for every asset makes re-scans slow on big
@@ -110,7 +100,6 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
     }
 
     const sizeCache = await loadSizeCache();
-    const query = deviceParams();
     let after: string | undefined;
     let hasNextPage = true;
 
@@ -134,7 +123,7 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
           status.counts.unsupported++;
           continue;
         }
-        const mtime = Math.round(asset.modificationTime || asset.creationTime);
+        const mtime = assetMtime(asset);
         const cacheKey = `${asset.id}:${mtime}`;
         let size = sizeCache[cacheKey];
         let localUri: string | null = null;
@@ -151,7 +140,13 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
             continue;
           }
         }
-        candidates.push({ asset, path: stablePath(asset), mtime, size, localUri });
+        candidates.push({
+          asset,
+          path: stablePath(asset.id, asset.filename),
+          mtime,
+          size,
+          localUri,
+        });
         if (status.counts.scanned % 25 === 0) emit(`Scanning library… (${status.counts.scanned})`);
       }
       await saveSizeCache(sizeCache);
@@ -159,12 +154,7 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
 
       // Manifest for this page: the server answers with what it doesn't have.
       emit(`Checking ${candidates.length} files with the server…`);
-      const needed = await postJson<{ path: string }[]>(
-        session,
-        `/files/manifest?${query}`,
-        candidates.map((c) => ({ path: c.path, mtime: mtimeParam(c.mtime), size: c.size }))
-      );
-      const neededPaths = new Set(needed.map((n) => n.path));
+      const neededPaths = await manifestCheck(session, candidates);
       const work = candidates.filter((c) => neededPaths.has(c.path));
       status.counts.upToDate += candidates.length - work.length;
       emit();
@@ -174,41 +164,24 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
         if (cancelled) break;
         try {
           const localUri = candidate.localUri ?? (await localUriFor(candidate.asset));
-          emit(`Hashing ${candidate.asset.filename}…`);
-          const sha = await sha256OfFile(localUri, candidate.size);
-          const toUpload = await postJson<{ path: string }[]>(session, '/files/hashes', [
+          const outcome = await hashAndUpload(
+            session,
             {
               path: candidate.path,
-              mtime: mtimeParam(candidate.mtime),
+              mtime: candidate.mtime,
               size: candidate.size,
-              sha256: sha,
+              localUri,
+              cacheKey: `${candidate.asset.id}:${candidate.mtime}:${candidate.size}`,
             },
-          ]);
-          if (toUpload.length === 0) {
-            status.counts.deduped++;
-            emit();
-            continue;
-          }
-          emit(`Uploading ${candidate.asset.filename}…`);
-          const result = await LegacyFileSystem.uploadAsync(
-            `${session.baseUrl}/files/upload`,
-            localUri,
-            {
-              httpMethod: 'PUT',
-              uploadType: LegacyFileSystem.FileSystemUploadType.BINARY_CONTENT,
-              headers: {
-                ...authHeaders(session),
-                'X-Path': candidate.path,
-                'X-MTime': mtimeParam(candidate.mtime),
-                'X-SHA256': sha,
-                'X-Size': String(candidate.size),
-              },
-            }
+            (phase) =>
+              emit(
+                phase === 'hashing'
+                  ? `Hashing ${candidate.asset.filename}…`
+                  : `Uploading ${candidate.asset.filename}…`
+              )
           );
-          if (result.status < 200 || result.status >= 300) {
-            throw new Error(result.body || `Upload failed (${result.status})`);
-          }
-          status.counts.uploaded++;
+          if (outcome === 'deduped') status.counts.deduped++;
+          else status.counts.uploaded++;
           emit();
         } catch (err) {
           status.counts.failed++;
