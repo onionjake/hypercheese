@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2025_09_25_053707) do
+ActiveRecord::Schema[7.2].define(version: 2025_09_26_001000) do
   create_table "bullhorns", id: :integer, charset: "latin1", collation: "latin1_swedish_ci", force: :cascade do |t|
     t.integer "user_id", null: false
     t.integer "item_id", null: false
@@ -25,7 +25,7 @@ ActiveRecord::Schema[7.2].define(version: 2025_09_25_053707) do
     t.string "path", null: false
     t.string "sha256", null: false
     t.bigint "size", null: false
-    t.datetime "mtime", precision: nil, null: false
+    t.string "mtime", null: false
     t.datetime "deleted_at", precision: nil
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
