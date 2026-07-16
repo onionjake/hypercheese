@@ -54,12 +54,12 @@ export default function UploadScreen() {
     setFiles(await prepareFiles(result.assets));
   };
 
-  const upload = async () => {
-    if (!session || busy) return;
+  const run = async (targets: UploadFile[]) => {
+    if (!session || busy || targets.length === 0) return;
     setBusy(true);
     setDoneMessage(null);
     try {
-      await uploadFiles(session, files, (updated) => {
+      await uploadFiles(session, targets, (updated) => {
         setFiles((prev) => prev.map((f) => (f.key === updated.key ? { ...updated } : f)));
       });
       setFiles((current) => {
@@ -70,7 +70,7 @@ export default function UploadScreen() {
         setDoneMessage(
           failed === 0
             ? `Shared ${uploaded} ${uploaded === 1 ? 'item' : 'items'} with the family 🧀`
-            : `${uploaded} uploaded, ${failed} failed — try again for the failed ones`
+            : `${uploaded} uploaded, ${failed} failed`
         );
         return current;
       });
@@ -79,7 +79,14 @@ export default function UploadScreen() {
     }
   };
 
+  const upload = () => run(files);
+  // Retry re-runs the whole protocol for just the failed files: the server
+  // manifest remains the source of truth, so anything that actually made it
+  // up in the meantime resolves to "already uploaded".
+  const retryFailed = () => run(files.filter((f) => f.status === 'error'));
+
   const pendingCount = files.filter((f) => f.status === 'pending').length;
+  const failedCount = files.filter((f) => f.status === 'error').length;
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
@@ -153,6 +160,16 @@ export default function UploadScreen() {
                 {files.length ? 'Pick different' : 'Pick photos'}
               </Text>
             </Pressable>
+            {!busy && failedCount > 0 ? (
+              <Pressable
+                style={[styles.button, styles.secondaryButton, { borderColor: '#ED4956' }]}
+                onPress={retryFailed}
+              >
+                <Text style={[styles.buttonText, { color: '#ED4956' }]}>
+                  Retry {failedCount} failed
+                </Text>
+              </Pressable>
+            ) : null}
             {files.length > 0 ? (
               <Pressable
                 style={[styles.button, { backgroundColor: accent }, (busy || pendingCount === 0) && { opacity: 0.5 }]}
