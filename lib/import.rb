@@ -26,7 +26,7 @@ module Import
       source: source,
       partial_path: blob.path,
       file_path: blob.download_to_temp,
-      mtime: blob.mtime
+      mtime: Time.at(blob.mtime.to_f)
     )
   end
 

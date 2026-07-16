@@ -27,7 +27,7 @@ class @Uploader
       status: 'Queued'
       error: null
       path: file.webkitRelativePath || file.name
-      mtime: file.lastModified
+      mtime: "#{file.lastModified / 1000}"
       size: file.size
 
     @queue = @queue.concat newFiles

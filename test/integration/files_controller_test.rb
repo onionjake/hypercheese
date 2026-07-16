@@ -8,7 +8,7 @@ class FilesControllerTest < ActionDispatch::IntegrationTest
 
     @file_info = {
       path: "/test/file.txt",
-      mtime: (Time.current.to_f * 1000).round,
+      mtime: Time.current.to_f.to_s,
       size: 1024,
       sha256: "a" * 64  # Mock SHA256 hash
     }
@@ -102,6 +102,7 @@ class FilesControllerTest < ActionDispatch::IntegrationTest
     assert blob.present?
     assert_equal Digest::SHA256.hexdigest(content), blob.sha256
     assert_equal content.size, blob.size
+    assert_equal @file_info[:mtime], blob.mtime
   end
 
   test "invalid authentication" do

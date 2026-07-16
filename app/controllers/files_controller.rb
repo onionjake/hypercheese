@@ -71,7 +71,7 @@ class FilesController < ApplicationController
     res = []
     files.each do |file|
       blob = blobs[file[:path]]
-      same_mtime = (blob&.mtime.to_f * 1000).round == file[:mtime]
+      same_mtime = blob&.mtime == file[:mtime].to_s
       same_size = blob&.size == file[:size]
       next if same_mtime && same_size
       res.push({ path: file[:path] })
@@ -97,7 +97,7 @@ class FilesController < ApplicationController
           path: file[:path],
           sha256: file[:sha256].downcase,
           size: file[:size],
-          mtime: Time.at(file[:mtime].to_f / 1000),
+          mtime: file[:mtime].to_s,
         )
       else
         res.push({
@@ -110,7 +110,7 @@ class FilesController < ApplicationController
 
   def upload
     path = request.headers['X-Path']
-    mtime = request.headers['X-MTime'].to_f / 1000
+    mtime = request.headers['X-MTime'].to_s
     sha256 = request.headers['X-SHA256'].downcase
     size = request.headers['X-Size'].to_i
 
@@ -144,7 +144,7 @@ class FilesController < ApplicationController
       path: path,
       sha256: sha256,
       size: size,
-      mtime: Time.at(mtime),
+      mtime: mtime,
     )
 
     @device.update! last_upload_at: Time.current
