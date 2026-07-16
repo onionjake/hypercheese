@@ -43,9 +43,12 @@ export default function UploadScreen() {
       allowsMultipleSelection: true,
       selectionLimit: 50,
       quality: 1,
-      // Ask iOS for JPEG/H.264 versions so the server can import them.
+      // Hand over the ORIGINAL bytes — no on-device transcoding. The server
+      // transcodes video itself (ffmpeg), and stable original bytes keep the
+      // sha256 dedup working across picks. HEIC photos will show as
+      // unsupported until the server importer accepts them.
       preferredAssetRepresentationMode:
-        ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+        ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
     });
     if (result.canceled) return;
     setFiles(await prepareFiles(result.assets));

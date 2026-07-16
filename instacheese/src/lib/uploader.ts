@@ -1,17 +1,18 @@
-import * as Crypto from 'expo-crypto';
 import { File } from 'expo-file-system';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import type { ImagePickerAsset } from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import { Platform } from 'react-native';
 
-import { CLIENT_VERSION, type Session } from './api';
-
-// Extensions the server's importer accepts (lib/import.rb).
-const SUPPORTED_EXTENSIONS = new Set([
-  'jpg', 'jpeg', 'tiff', 'tif', 'png',
-  'avi', 'mov', 'mpg', 'mts', 'mp4', 'mkv', 'vob', 'dv', 'wmv',
-]);
+import { type Session } from './api';
+import {
+  SUPPORTED_EXTENSIONS,
+  authHeaders,
+  deviceParams,
+  extensionOf,
+  mtimeParam,
+  postJson,
+  sha256OfFile,
+} from './upload-protocol';
 
 export type UploadStatus =
   | 'pending'
@@ -31,11 +32,6 @@ export interface UploadFile {
   mtime: number; // milliseconds since epoch
   status: UploadStatus;
   error?: string;
-}
-
-function extensionOf(name: string): string {
-  const match = name.match(/\.(\w+)$/);
-  return match ? match[1].toLowerCase() : '';
 }
 
 function fileNameFor(asset: ImagePickerAsset, index: number): string {
@@ -102,55 +98,6 @@ export async function prepareFiles(assets: ImagePickerAsset[]): Promise<UploadFi
   });
 }
 
-// The server stores mtime as an opaque string of seconds-since-epoch and, on
-// the next manifest, compares it byte-for-byte against what we send. So every
-// request touching a given file (manifest, hashes, upload) must send the exact
-// same representation, in seconds. Match the web uploader: `lastModified / 1000`
-// rendered with String(). `mtime` is held internally in milliseconds.
-function mtimeParam(file: Pick<UploadFile, 'mtime'>): string {
-  return String(file.mtime / 1000);
-}
-
-function authHeaders(session: Session): Record<string, string> {
-  if (!session.token) {
-    throw new Error('Uploading requires the upgraded HyperCheese server');
-  }
-  return {
-    Authorization: `Bearer ${session.token}`,
-    'X-API-Version': '1.0',
-  };
-}
-
-async function postJson<T>(session: Session, path: string, body: unknown): Promise<T> {
-  const res = await fetch(session.baseUrl + path, {
-    method: 'POST',
-    headers: {
-      ...authHeaders(session),
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Request failed (${res.status})`);
-  }
-  return (await res.json()) as T;
-}
-
-function toHex(bytes: Uint8Array): string {
-  let out = '';
-  for (let i = 0; i < bytes.length; i++) {
-    out += bytes[i].toString(16).padStart(2, '0');
-  }
-  return out;
-}
-
-async function sha256OfFile(uri: string): Promise<string> {
-  const bytes = await new File(uri).bytes();
-  const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, bytes);
-  return toHex(new Uint8Array(digest));
-}
-
 export async function uploadFiles(
   session: Session,
   files: UploadFile[],
@@ -167,19 +114,12 @@ export async function uploadFiles(
   candidates.forEach((f) => update(f, { status: 'checking', error: undefined }));
 
   // Step 1: manifest — the server answers with the paths it doesn't have yet.
-  const manifest = candidates.map((f) => ({ path: f.path, mtime: mtimeParam(f), size: f.size }));
-  // The server refreshes device metadata from these query params on every
-  // manifest, so always send them or they get blanked out.
-  const deviceParams = new URLSearchParams({
-    os: Platform.OS,
-    nickname: `InstaCheese on ${Platform.OS}`,
-    client_version: CLIENT_VERSION,
-  });
+  const manifest = candidates.map((f) => ({ path: f.path, mtime: mtimeParam(f.mtime), size: f.size }));
   let needed: { path: string }[];
   try {
     needed = await postJson<{ path: string }[]>(
       session,
-      `/files/manifest?${deviceParams.toString()}`,
+      `/files/manifest?${deviceParams()}`,
       manifest
     );
   } catch (err) {
@@ -198,7 +138,7 @@ export async function uploadFiles(
   for (const file of toHash) {
     update(file, { status: 'hashing' });
     try {
-      hashes.set(file.path, await sha256OfFile(file.asset.uri));
+      hashes.set(file.path, await sha256OfFile(file.asset.uri, file.size));
     } catch (err) {
       update(file, { status: 'error', error: `Could not read file: ${String(err)}` });
     }
@@ -214,7 +154,7 @@ export async function uploadFiles(
       '/files/hashes',
       hashed.map((f) => ({
         path: f.path,
-        mtime: mtimeParam(f),
+        mtime: mtimeParam(f.mtime),
         size: f.size,
         sha256: hashes.get(f.path),
       }))
@@ -242,7 +182,7 @@ export async function uploadFiles(
           headers: {
             ...authHeaders(session),
             'X-Path': file.path,
-            'X-MTime': mtimeParam(file),
+            'X-MTime': mtimeParam(file.mtime),
             'X-SHA256': hashes.get(file.path)!,
             'X-Size': String(file.size),
           },
