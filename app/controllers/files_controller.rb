@@ -88,7 +88,7 @@ class FilesController < ApplicationController
 
     res = []
     files.each do |file|
-      existing_blob = existing_blobs_by_sha[file[:sha256]]
+      existing_blob = existing_blobs_by_sha[file[:sha256].downcase]
 
       if existing_blob
         # The content is already in storage, possibly uploaded by someone else, or is a duplicate
