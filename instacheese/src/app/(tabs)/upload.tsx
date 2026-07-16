@@ -48,7 +48,7 @@ export default function UploadScreen() {
         ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
     });
     if (result.canceled) return;
-    setFiles(prepareFiles(result.assets));
+    setFiles(await prepareFiles(result.assets));
   };
 
   const upload = async () => {
