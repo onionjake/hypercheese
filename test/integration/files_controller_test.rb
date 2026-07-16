@@ -13,12 +13,13 @@ class FilesControllerTest < ActionDispatch::IntegrationTest
       sha256: "a" * 64  # Mock SHA256 hash
     }
 
-    # Mock Bucket class
-    Object.const_set(:Bucket, Class.new do
-      def self.put_object key:, body:, metadata:
-        true
-      end
-    end) unless defined?(Bucket)
+    # Stub S3 so uploads don't hit the network.  Bucket is defined by an
+    # initializer (config/initializers/s3.rb), so `defined?(Bucket)` is always
+    # true and a conditional const_set mock would never install — stub the
+    # singleton method instead.
+    Bucket.define_singleton_method(:put_object) do |key:, body:, content_type: nil|
+      true
+    end
   end
 
   test "authentication flow" do
@@ -167,7 +168,7 @@ class FilesControllerTest < ActionDispatch::IntegrationTest
     }
 
     assert_response :bad_request
-    assert_equal "Size mismatch", @response.body
+    assert_match(/\ASize mismatch/, @response.body)
   end
 
   test "sha256 mismatch in upload" do
@@ -196,6 +197,81 @@ class FilesControllerTest < ActionDispatch::IntegrationTest
     }
 
     assert_response :bad_request
-    assert_equal "SHA256 mismatch", @response.body
+    assert_match(/\ASHA256 mismatch/, @response.body)
+  end
+
+  test "manifest does not re-request an unchanged file after upload" do
+    token = auth_token
+    content = "test content"
+    file = { path: "photos/IMG_0001.jpg", mtime: "1689123456.789", size: content.size }
+
+    post "/files/manifest", params: [file].to_json, headers: api_headers(token)
+    assert_response :success
+    assert_equal [file[:path]], JSON.parse(@response.body).map { _1["path"] }
+
+    put "/files/upload", params: content, headers: api_headers(token).merge(
+      "CONTENT_TYPE" => "application/octet-stream",
+      "X-Path" => file[:path],
+      "X-MTime" => file[:mtime],
+      "X-SHA256" => Digest::SHA256.hexdigest(content),
+      "X-Size" => content.size
+    )
+    assert_response :success
+
+    # The core promise of the protocol: the client keeps no local state, so an
+    # unchanged file must never be asked for (and rehashed) again.
+    post "/files/manifest", params: [file].to_json, headers: api_headers(token)
+    assert_response :success
+    assert_equal [], JSON.parse(@response.body)
+  end
+
+  test "hashes matches existing content case-insensitively" do
+    token = auth_token
+    content = "test content"
+    sha = Digest::SHA256.hexdigest content
+
+    put "/files/upload", params: content, headers: api_headers(token).merge(
+      "CONTENT_TYPE" => "application/octet-stream",
+      "X-Path" => "photos/original.jpg",
+      "X-MTime" => "1689123456.789",
+      "X-SHA256" => sha,
+      "X-Size" => content.size
+    )
+    assert_response :success
+
+    # Same content under another path, hash sent in uppercase: the server
+    # must recognize it and not ask for an upload.
+    post "/files/hashes", params: [{
+      path: "photos/copy.jpg",
+      mtime: "1689999999.5",
+      size: content.size,
+      sha256: sha.upcase
+    }].to_json, headers: api_headers(token)
+    assert_response :success
+    assert_equal [], JSON.parse(@response.body)
+    assert CheeseBlob.exists?(path: "photos/copy.jpg", sha256: sha)
+  end
+
+  private
+
+  def auth_token
+    post "/files/auth", params: {
+      username: @user.username,
+      password: @password,
+      nickname: "Test Device",
+      os: "Linux",
+      client_software: "Test Client",
+      client_version: "1.0"
+    }.to_json, headers: { "CONTENT_TYPE" => "application/json" }
+    assert_response :success
+    JSON.parse(@response.body)["token"]
+  end
+
+  def api_headers token
+    {
+      "CONTENT_TYPE" => "application/json",
+      "Authorization" => "Bearer #{token}",
+      "X-API-Version" => "1.0"
+    }
   end
 end
