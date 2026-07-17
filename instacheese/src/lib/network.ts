@@ -7,6 +7,13 @@ import { getSettings } from './settings';
 // mobile data. NetInfo's isConnectionExpensive reflects Android's "metered"
 // flag (and iOS's expensive/constrained paths), which covers Wi-Fi networks
 // marked as metered.
+//
+// NetInfo.fetch() answers from NetInfo's internal cache, which goes stale on
+// Android when capability changes (like the metered flag flipping) arrive
+// while the app is backgrounded — the OS doesn't deliver network callbacks to
+// cached apps, so the cache keeps saying "metered" until the process is
+// killed. refresh() re-queries the platform every time, and this gate only
+// runs at drain/batch boundaries, so the extra native round-trip is cheap.
 
 export interface UploadPermission {
   allowed: boolean;
@@ -14,7 +21,7 @@ export interface UploadPermission {
 }
 
 export async function uploadAllowed(): Promise<UploadPermission> {
-  const [settings, state] = await Promise.all([getSettings(), NetInfo.fetch()]);
+  const [settings, state] = await Promise.all([getSettings(), NetInfo.refresh()]);
   const summary = `type=${state.type} expensive=${String(
     state.details && 'isConnectionExpensive' in state.details
       ? state.details.isConnectionExpensive
