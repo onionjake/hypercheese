@@ -171,9 +171,12 @@ export default function LibraryScreen() {
     refreshCounts();
   };
 
+  // Clearing the checkboxes is just a selection reset for picking the next
+  // batch — anything already handed to the queue by "Back up" keeps
+  // uploading. Un-check an individual photo (or use the queue screen) to
+  // cancel a queued upload.
   const selectAll = async (selected: boolean) => {
     await setAllSelected(selected);
-    if (!selected) await queue.removeQueuedBackup();
     await loadPage(true, filter);
     await refreshCounts();
   };

@@ -244,9 +244,12 @@ export function setSession(s: Session): void {
 
 // --- Queue operations ----------------------------------------------------------
 
-// Insert or revive items. Re-enqueueing an existing item resets it to
-// 'queued' (the manifest makes that cheap when it's actually done already);
-// the item currently being uploaded is left alone. Returns how many items
+// Insert or revive items. Re-enqueueing resets a waiting or failed item to
+// 'queued'; the item currently being uploaded is left alone, and a row that
+// already FINISHED with an unchanged mtime keeps its result — resetting it
+// would wipe visible progress on every "Back up" press for no benefit.
+// (Finished rows are pruned after FINISHED_TTL_MS, after which the photo gets
+// re-verified against the server manifest again.) Returns how many items
 // were NEWLY queued — upserts onto rows that were already waiting don't
 // count, so callers (the sync scan) don't double-report.
 export function enqueue(items: NewQueueItem[]): Promise<number> {
@@ -258,20 +261,31 @@ export function enqueue(items: NewQueueItem[]): Promise<number> {
     const accepted = items.filter((i) => i.key !== activeKey);
     if (accepted.length === 0) return 0;
 
-    // Rows already waiting in the queue aren't "newly added".
-    const alreadyActive = new Set<string>();
+    const existing = new Map<string, any>();
     for (const keys of chunk(accepted.map((i) => i.key), 400)) {
       const placeholders = keys.map(() => '?').join(',');
-      const rows = await db.getAllAsync<{ key: string }>(
-        `SELECT key FROM uploads WHERE key IN (${placeholders})
-         AND status IN ('queued', 'checking', 'hashing', 'uploading')`,
+      const rows = await db.getAllAsync<any>(
+        `SELECT * FROM uploads WHERE key IN (${placeholders})`,
         ...keys
       );
-      rows.forEach((r) => alreadyActive.add(r.key));
+      rows.forEach((r) => existing.set(r.key, r));
     }
+    const isFreshlyFinished = (item: NewQueueItem) => {
+      const prev = existing.get(item.key);
+      return (
+        !!prev && (prev.status === 'done' || prev.status === 'exists') && prev.mtime === item.mtime
+      );
+    };
+    // Rows already waiting in the queue aren't "newly added".
+    const wasActive = (key: string) => {
+      const prev = existing.get(key);
+      return !!prev && ['queued', 'checking', 'hashing', 'uploading'].includes(prev.status);
+    };
+    const toQueue = accepted.filter((i) => !isFreshlyFinished(i));
+    const skipped = accepted.filter(isFreshlyFinished);
 
     await db.withTransactionAsync(async () => {
-      for (const item of accepted) {
+      for (const item of toQueue) {
         await db.runAsync(
           `INSERT INTO uploads (key, source, asset_id, local_uri, thumb_uri, filename, path, mtime, size, status, error, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', NULL, ?, ?)
@@ -302,7 +316,7 @@ export function enqueue(items: NewQueueItem[]): Promise<number> {
       }
     });
 
-    for (const item of accepted) {
+    for (const item of toQueue) {
       emitItem({
         key: item.key,
         source: item.source,
@@ -317,8 +331,13 @@ export function enqueue(items: NewQueueItem[]): Promise<number> {
         error: null,
       });
     }
+    // Screens that just (re-)enqueued a finished item still hear its real
+    // status, e.g. a re-picked photo shows "Already uploaded" immediately.
+    for (const item of skipped) {
+      emitItem(rowToItem(existing.get(item.key)));
+    }
     await refreshAndBroadcast();
-    return accepted.filter((i) => !alreadyActive.has(i.key)).length;
+    return toQueue.filter((i) => !wasActive(i.key)).length;
   });
 }
 
@@ -368,18 +387,6 @@ export async function removeQueued(keys: string[], source?: QueueSource): Promis
       ...(source ? [source] : [])
     );
   }
-  await refreshAndBroadcast();
-}
-
-// Used when the whole backup selection is cleared: forget everything the
-// backup flow queued that hasn't started uploading. Items queued by the
-// picker or a full sync stay.
-export async function removeQueuedBackup(): Promise<void> {
-  const db = await openDb();
-  await db.runAsync(
-    `DELETE FROM uploads WHERE source = 'backup' AND status IN ('queued', 'checking', 'failed') AND key != ?`,
-    current?.key ?? ''
-  );
   await refreshAndBroadcast();
 }
 
