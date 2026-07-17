@@ -1,9 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
+import { useEffect } from 'react';
 
+import { useAuth } from '@/lib/auth';
+import { startAutoRetry } from '@/lib/backup-manager';
 import { accent } from '@/lib/theme';
 
 export default function TabsLayout() {
+  const { session, user } = useAuth();
+
+  // Anything marked for backup retries periodically while the app is open —
+  // on a timer, on foreground, and when the network becomes usable.
+  useEffect(() => {
+    if (!session || !user?.can_write) return;
+    return startAutoRetry(session);
+  }, [session, user?.can_write]);
+
   return (
     <Tabs
       screenOptions={{

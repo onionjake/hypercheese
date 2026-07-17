@@ -1,13 +1,49 @@
+import * as Sharing from 'expo-sharing';
 import * as WebBrowser from 'expo-web-browser';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/lib/auth';
+import { exportLogs, logError } from '@/lib/log';
+import { getSettings, updateSettings } from '@/lib/settings';
 import { accent, usePalette } from '@/lib/theme';
 
 export default function ProfileScreen() {
   const { session, user, signOut } = useAuth();
   const palette = usePalette();
+  const [uploadOnCellular, setUploadOnCellular] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    getSettings().then((s) => setUploadOnCellular(s.uploadOnCellular));
+  }, []);
+
+  const toggleCellular = async (value: boolean) => {
+    setUploadOnCellular(value);
+    await updateSettings({ uploadOnCellular: value });
+  };
+
+  const shareLogs = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const uri = await exportLogs();
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/gzip',
+          dialogTitle: 'InstaCheese debug logs',
+        });
+      } else {
+        Alert.alert('Logs saved', uri);
+      }
+    } catch (err) {
+      logError('logs', 'export failed', err);
+      Alert.alert('Could not export logs', String(err));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const displayName = user?.name || user?.username || 'Family member';
   const initial = displayName.trim().charAt(0).toUpperCase() || '🧀';
@@ -29,11 +65,41 @@ export default function ProfileScreen() {
           </Text>
         ) : null}
 
+        <View style={[styles.settingRow, { borderColor: palette.border }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: palette.text, fontWeight: '600' }}>
+              Upload using mobile data
+            </Text>
+            <Text style={{ color: palette.subtleText, fontSize: 12, marginTop: 2 }}>
+              Off: uploads wait for un-metered Wi-Fi.
+            </Text>
+          </View>
+          <Switch
+            value={uploadOnCellular}
+            onValueChange={toggleCellular}
+            trackColor={{ true: accent }}
+          />
+        </View>
+
         <Pressable
           style={[styles.button, { borderColor: palette.border }]}
           onPress={() => session && WebBrowser.openBrowserAsync(session.baseUrl)}
         >
           <Text style={{ color: palette.text, fontWeight: '600' }}>Open web gallery</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.button, { borderColor: palette.border }]}
+          onPress={shareLogs}
+          disabled={exporting}
+        >
+          {exporting ? (
+            <ActivityIndicator size="small" />
+          ) : (
+            <Text style={{ color: palette.text, fontWeight: '600' }}>
+              Download compressed debug logs
+            </Text>
+          )}
         </Pressable>
 
         <Pressable style={[styles.button, { borderColor: palette.border }]} onPress={signOut}>
@@ -58,6 +124,17 @@ const styles = StyleSheet.create({
   avatarText: { fontSize: 40, fontWeight: '700', color: '#fff' },
   name: { fontSize: 22, fontWeight: '700' },
   subtle: { fontSize: 14 },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignSelf: 'stretch',
+  },
   button: {
     marginTop: 20,
     borderWidth: StyleSheet.hairlineWidth,

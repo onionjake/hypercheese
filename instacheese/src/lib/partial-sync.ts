@@ -8,15 +8,21 @@ import {
   setSize,
   type LibraryAsset,
 } from './library-db';
+import { log, logError } from './log';
+import { uploadAllowed } from './network';
 import { hashAndUpload, manifestCheck, stablePath } from './upload-protocol';
 
 // Partial sync: run the manifest/hashes/upload protocol over exactly the
 // assets the user selected in the library catalog. The server manifest is
 // consulted on EVERY run — the local 'synced' status is just a display cache,
 // so if the server ever loses a file (or the device re-registers) the next
-// run notices and re-uploads. Statuses are written back to the catalog as
-// each file settles, which is also what makes retry work: failed files stay
-// selected and are simply picked up by the next run.
+// run notices and re-uploads.
+//
+// Failure semantics: only a problem with the file itself (can't read, server
+// rejected it) marks it 'failed'. Batch-level problems — network gone, server
+// unreachable, not on Wi-Fi — pause the run and leave everything 'pending',
+// so "marked for upload but not uploaded yet" stays visible and a later run
+// (see backup-manager) retries it.
 
 const BATCH_SIZE = 200;
 
@@ -30,7 +36,7 @@ export interface PartialSyncCounts {
 }
 
 export interface PartialSyncStatus {
-  phase: 'running' | 'done' | 'cancelled' | 'error';
+  phase: 'running' | 'done' | 'cancelled' | 'paused' | 'error';
   activity: string;
   counts: PartialSyncCounts;
   lastError: string | null;
@@ -53,10 +59,13 @@ interface Candidate {
   localUri: string | null;
 }
 
+// Thrown to stop the run without marking anything failed.
+class Paused extends Error {}
+
 export function startPartialSync(
   session: Session,
   onStatus: (status: PartialSyncStatus) => void,
-  onAsset?: (id: string, status: 'synced' | 'failed', error?: string) => void
+  onAsset?: (id: string, status: 'synced' | 'failed' | 'pending', error?: string) => void
 ): PartialSyncHandle {
   let cancelled = false;
   const status: PartialSyncStatus = {
@@ -75,9 +84,16 @@ export function startPartialSync(
     onAsset?.(asset.id, result, error);
   };
 
+  const ensureNetwork = async () => {
+    const permission = await uploadAllowed();
+    if (!permission.allowed) throw new Paused(permission.reason ?? 'Uploads paused');
+  };
+
   const run = async () => {
+    await ensureNetwork();
     const queue = await selectedForSync();
     status.counts.selected = queue.length;
+    log('backup', `run started: ${queue.length} selected`);
     if (queue.length === 0) {
       status.phase = 'done';
       emit('Nothing selected to back up');
@@ -105,6 +121,7 @@ export function startPartialSync(
           } catch (err) {
             status.counts.failed++;
             status.lastError = `${asset.filename}: ${String(err)}`;
+            logError('backup', `stat failed for ${asset.filename} (${asset.id})`, err);
             await settle(asset, 'failed', String(err));
             emit();
             continue;
@@ -119,7 +136,9 @@ export function startPartialSync(
       }
       if (cancelled || candidates.length === 0) continue;
 
-      // The server's manifest decides what actually needs work.
+      // The server's manifest decides what actually needs work. A manifest
+      // failure is a batch-level (network/server) problem: pause, leave
+      // everything pending for the next run.
       emit(`Checking ${candidates.length} files with the server…`);
       let neededPaths: Set<string>;
       try {
@@ -128,12 +147,8 @@ export function startPartialSync(
           candidates.map((c) => ({ path: c.path, mtime: c.asset.mtime, size: c.size }))
         );
       } catch (err) {
-        // Manifest failure fails the whole batch; nothing is marked synced.
-        status.counts.failed += candidates.length;
-        status.lastError = String(err);
-        for (const c of candidates) await settle(c.asset, 'failed', String(err));
-        emit();
-        continue;
+        logError('backup', 'manifest failed, pausing run', err);
+        throw new Paused(`Could not reach the server: ${String(err)}`);
       }
 
       for (const candidate of candidates) {
@@ -144,6 +159,8 @@ export function startPartialSync(
           emit();
           continue;
         }
+        // Connectivity can change mid-run (leave the house, Wi-Fi drops).
+        await ensureNetwork();
         try {
           const localUri = candidate.localUri ?? (await localUriFor(candidate.asset.id));
           const outcome = await hashAndUpload(
@@ -167,8 +184,10 @@ export function startPartialSync(
           await settle(candidate.asset, 'synced');
           emit();
         } catch (err) {
+          if (err instanceof Paused) throw err;
           status.counts.failed++;
           status.lastError = `${candidate.asset.filename}: ${String(err)}`;
+          logError('backup', `failed ${candidate.asset.filename} (${candidate.asset.id})`, err);
           await settle(candidate.asset, 'failed', String(err));
           emit();
         }
@@ -176,12 +195,21 @@ export function startPartialSync(
     }
 
     status.phase = cancelled ? 'cancelled' : 'done';
+    log('backup', `run ${status.phase}`, status.counts);
     emit(cancelled ? 'Cancelled' : 'Backup complete');
   };
 
   run().catch((err) => {
+    if (err instanceof Paused) {
+      status.phase = 'paused';
+      status.lastError = null;
+      log('backup', `run paused: ${err.message}`, status.counts);
+      emit(err.message);
+      return;
+    }
     status.phase = 'error';
     status.lastError = String(err);
+    logError('backup', 'run crashed', err);
     emit('Backup failed');
   });
 

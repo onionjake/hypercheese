@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -12,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/lib/auth';
+import * as backup from '@/lib/backup-manager';
 import {
   libraryCounts,
   listAssets,
@@ -22,11 +24,7 @@ import {
   type LibraryAsset,
   type LibraryCounts,
 } from '@/lib/library-db';
-import {
-  startPartialSync,
-  type PartialSyncHandle,
-  type PartialSyncStatus,
-} from '@/lib/partial-sync';
+import { type PartialSyncStatus } from '@/lib/partial-sync';
 import { accent, usePalette } from '@/lib/theme';
 
 // Partial sync: a browsable catalog of the camera roll where each photo can
@@ -51,8 +49,7 @@ export default function LibraryScreen() {
   const [scanning, setScanning] = useState(false);
   const [scanCount, setScanCount] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [syncStatus, setSyncStatus] = useState<PartialSyncStatus | null>(null);
-  const handleRef = useRef<PartialSyncHandle | null>(null);
+  const [syncStatus, setSyncStatus] = useState<PartialSyncStatus | null>(backup.getStatus());
   const endReached = useRef(false);
 
   const canWrite = !!user?.can_write;
@@ -93,8 +90,20 @@ export default function LibraryScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canWrite]);
 
-  // Stop a running backup when the screen unmounts for good.
-  useEffect(() => () => handleRef.current?.cancel(), []);
+  // The backup run is owned by backup-manager (it can also start
+  // automatically), so this screen just observes it.
+  useEffect(() => {
+    const unStatus = backup.subscribeStatus(setSyncStatus);
+    const unAssets = backup.subscribeAssets((id, result, error) => {
+      setAssets((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, status: result, error: error ?? null } : a))
+      );
+    });
+    return () => {
+      unStatus();
+      unAssets();
+    };
+  }, []);
 
   const changeFilter = (next: AssetFilter) => {
     setFilter(next);
@@ -131,19 +140,34 @@ export default function LibraryScreen() {
 
   const begin = () => {
     if (!session || running) return;
-    handleRef.current = startPartialSync(session, setSyncStatus, (id, result, error) => {
-      setAssets((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, status: result, error: error ?? null } : a))
-      );
-    });
+    backup.start(session, 'manual');
   };
 
   useEffect(() => {
     if (syncStatus && syncStatus.phase !== 'running') refreshCounts();
   }, [syncStatus, refreshCounts]);
 
+  const showDetails = (item: LibraryAsset) => {
+    const lines = [
+      item.status === 'synced'
+        ? 'Backed up'
+        : item.status === 'failed'
+          ? 'Last attempt failed'
+          : item.selected
+            ? 'Marked for backup — not uploaded yet'
+            : 'Not marked for backup',
+    ];
+    if (item.error) lines.push(`\n${item.error}`);
+    Alert.alert(item.filename, lines.join('\n'));
+  };
+
   const cell = ({ item }: { item: LibraryAsset }) => (
-    <Pressable style={styles.cell} onPress={() => toggle(item)} disabled={running}>
+    <Pressable
+      style={styles.cell}
+      onPress={() => toggle(item)}
+      onLongPress={() => showDetails(item)}
+      disabled={running}
+    >
       <Image source={{ uri: item.uri }} style={styles.thumb} contentFit="cover" recyclingKey={item.id} />
       {!item.supported ? (
         <View style={styles.dim}>
@@ -259,19 +283,36 @@ export default function LibraryScreen() {
                 <ActivityIndicator size="small" />
               ) : (
                 <Ionicons
-                  name={syncStatus.phase === 'done' ? 'checkmark-circle' : 'alert-circle'}
+                  name={
+                    syncStatus.phase === 'done'
+                      ? 'checkmark-circle'
+                      : syncStatus.phase === 'paused'
+                        ? 'cloud-offline-outline'
+                        : 'alert-circle'
+                  }
                   size={18}
-                  color={syncStatus.phase === 'done' ? '#2E7D32' : '#ED4956'}
+                  color={
+                    syncStatus.phase === 'done'
+                      ? '#2E7D32'
+                      : syncStatus.phase === 'paused'
+                        ? '#E8A33D'
+                        : '#ED4956'
+                  }
                 />
               )}
               <View style={{ flex: 1 }}>
-                <Text style={{ color: palette.text, fontSize: 13 }} numberOfLines={1}>
+                <Text style={{ color: palette.text, fontSize: 13 }} numberOfLines={2}>
                   {syncStatus.activity}
                 </Text>
                 <Text style={{ color: palette.subtleText, fontSize: 12 }} numberOfLines={1}>
                   {syncStatus.counts.uploaded + syncStatus.counts.deduped} uploaded ·{' '}
                   {syncStatus.counts.upToDate} already there · {syncStatus.counts.failed} failed
                 </Text>
+                {syncStatus.lastError ? (
+                  <Text style={{ color: '#ED4956', fontSize: 12 }} numberOfLines={2}>
+                    {syncStatus.lastError}
+                  </Text>
+                ) : null}
               </View>
             </View>
           ) : null}
@@ -292,7 +333,7 @@ export default function LibraryScreen() {
                 running ? styles.cancelButton : { backgroundColor: accent },
                 !running && (counts?.pending ?? 0) === 0 && { opacity: 0.5 },
               ]}
-              onPress={running ? () => handleRef.current?.cancel() : begin}
+              onPress={running ? backup.cancel : begin}
               disabled={!running && (counts?.pending ?? 0) === 0}
             >
               <Text style={[styles.buttonText, { color: running ? '#ED4956' : '#fff' }]}>
