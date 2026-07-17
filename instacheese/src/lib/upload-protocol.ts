@@ -5,6 +5,7 @@ import { sha256 } from 'js-sha256';
 import { Platform } from 'react-native';
 
 import { CLIENT_VERSION, type Session } from './api';
+import { log } from './log';
 
 // Shared pieces of the /files/* upload protocol, used by both the picker
 // upload flow (uploader.ts) and the camera-roll sync flow (sync.ts).
@@ -82,6 +83,7 @@ export async function postJson<T>(session: Session, path: string, body: unknown)
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
+    log('api', `POST ${path} failed (${res.status}): ${text.slice(0, 500)}`);
     throw new Error(text || `Request failed (${res.status})`);
   }
   return (await res.json()) as T;
@@ -192,6 +194,7 @@ export async function manifestCheck(
     `/files/manifest?${deviceParams()}`,
     files.map((f) => ({ path: f.path, mtime: mtimeParam(f.mtime), size: f.size }))
   );
+  log('manifest', `sent ${files.length}, server wants ${needed.length}`);
   return new Set(needed.map((n) => n.path));
 }
 
@@ -212,7 +215,10 @@ export async function hashAndUpload(
   const toUpload = await postJson<{ path: string }[]>(session, '/files/hashes', [
     { path: file.path, mtime: mtimeParam(file.mtime), size: file.size, sha256: sha },
   ]);
-  if (toUpload.length === 0) return 'deduped';
+  if (toUpload.length === 0) {
+    log('upload', `deduped ${file.path} (${file.size} bytes)`);
+    return 'deduped';
+  }
 
   onPhase?.('uploading');
   const result = await LegacyFileSystem.uploadAsync(`${session.baseUrl}/files/upload`, file.localUri, {
@@ -227,7 +233,9 @@ export async function hashAndUpload(
     },
   });
   if (result.status < 200 || result.status >= 300) {
+    log('upload', `PUT ${file.path} failed (${result.status}): ${(result.body || '').slice(0, 500)}`);
     throw new Error(result.body || `Upload failed (${result.status})`);
   }
+  log('upload', `uploaded ${file.path} (${file.size} bytes)`);
   return 'uploaded';
 }
