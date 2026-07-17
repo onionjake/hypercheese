@@ -73,10 +73,21 @@ async function saveSizeCache(cache: SizeCache): Promise<void> {
   }
 }
 
+// getAssetInfoAsync reads EXIF (including GPS) on Android 10+, which needs
+// the ACCESS_MEDIA_LOCATION permission and rejects wholesale without it — a
+// build predating that permission can't stat anything through it. The
+// asset's library uri is a plain readable file:// path on Android, so fall
+// back to it rather than failing the file. (iOS uris are ph:// and unusable
+// here, but iOS never rejects this call over EXIF access.)
 async function localUriFor(asset: MediaLibrary.Asset): Promise<string> {
-  const info = await MediaLibrary.getAssetInfoAsync(asset);
-  if (!info.localUri) throw new Error('Original not available on this device');
-  return info.localUri;
+  try {
+    const info = await MediaLibrary.getAssetInfoAsync(asset);
+    if (info.localUri) return info.localUri;
+    throw new Error('Original not available on this device');
+  } catch (err) {
+    if (asset.uri.startsWith('file://')) return asset.uri;
+    throw err;
+  }
 }
 
 export function startSync(session: Session, onStatus: (status: SyncStatus) => void): SyncHandle {

@@ -46,10 +46,21 @@ export interface PartialSyncHandle {
   cancel(): void;
 }
 
-async function localUriFor(assetId: string): Promise<string> {
-  const info = await MediaLibrary.getAssetInfoAsync(assetId);
-  if (!info.localUri) throw new Error('Original not available on this device');
-  return info.localUri;
+// getAssetInfoAsync reads EXIF (including GPS) on Android 10+, which needs
+// the ACCESS_MEDIA_LOCATION permission and rejects wholesale without it — a
+// build predating that permission can't stat anything through it. The
+// catalog's library uri is a plain readable file:// path on Android, so fall
+// back to it rather than failing the file. (iOS uris are ph:// and unusable
+// here, but iOS never rejects this call over EXIF access.)
+async function localUriFor(asset: Pick<LibraryAsset, 'id' | 'uri'>): Promise<string> {
+  try {
+    const info = await MediaLibrary.getAssetInfoAsync(asset.id);
+    if (info.localUri) return info.localUri;
+    throw new Error('Original not available on this device');
+  } catch (err) {
+    if (asset.uri.startsWith('file://')) return asset.uri;
+    throw err;
+  }
 }
 
 interface Candidate {
@@ -113,7 +124,7 @@ export function startPartialSync(
         if (size == null) {
           try {
             emit(`Reading ${asset.filename}…`);
-            localUri = await localUriFor(asset.id);
+            localUri = await localUriFor(asset);
             const stat = await LegacyFileSystem.getInfoAsync(localUri);
             if (!stat.exists || stat.size === undefined) throw new Error('Could not stat file');
             size = stat.size;
@@ -162,7 +173,7 @@ export function startPartialSync(
         // Connectivity can change mid-run (leave the house, Wi-Fi drops).
         await ensureNetwork();
         try {
-          const localUri = candidate.localUri ?? (await localUriFor(candidate.asset.id));
+          const localUri = candidate.localUri ?? (await localUriFor(candidate.asset));
           const outcome = await hashAndUpload(
             session,
             {

@@ -39,7 +39,8 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "InstaCheese reads photo dates so already-uploaded photos can be skipped."
+          "photosPermission": "InstaCheese reads photo dates so already-uploaded photos can be skipped.",
+          "isAccessMediaLocationEnabled": true
         }
       ],
       [
