@@ -3,6 +3,8 @@ import type { ImagePickerAsset } from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 
 import { type Session } from './api';
+import { log, logError } from './log';
+import { uploadAllowed } from './network';
 import {
   SUPPORTED_EXTENSIONS,
   assetMtime,
@@ -119,6 +121,15 @@ export async function uploadFiles(
     onUpdate(file);
   };
 
+  // Same network rule as the sync flows: un-metered Wi-Fi unless the user
+  // opted in to mobile data.
+  const netPermission = await uploadAllowed();
+  if (!netPermission.allowed) {
+    candidates.forEach((f) => update(f, { status: 'error', error: netPermission.reason ?? 'Uploads paused' }));
+    return;
+  }
+  log('picker', `uploading ${candidates.length} picked files`);
+
   candidates.forEach((f) => update(f, { status: 'checking', error: undefined }));
 
   // Step 1: manifest — the server answers with the paths it doesn't have yet.
@@ -155,6 +166,7 @@ export async function uploadFiles(
       );
       update(file, { status: outcome === 'deduped' ? 'already-uploaded' : 'done' });
     } catch (err) {
+      logError('picker', `failed ${file.path}`, err);
       update(file, { status: 'error', error: String(err) });
     }
   }

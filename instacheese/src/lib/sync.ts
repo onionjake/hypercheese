@@ -4,6 +4,8 @@ import * as LegacyFileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library/legacy';
 
 import { type Session } from './api';
+import { log, logError } from './log';
+import { uploadAllowed } from './network';
 import {
   SUPPORTED_EXTENSIONS,
   assetMtime,
@@ -90,7 +92,16 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
     onStatus({ ...status, counts: { ...status.counts } });
   };
 
+  // Uploads only on allowed networks (un-metered Wi-Fi unless the user
+  // opted in to mobile data). Checked at start and between files, since
+  // connectivity can change mid-run.
+  const ensureNetwork = async () => {
+    const netPermission = await uploadAllowed();
+    if (!netPermission.allowed) throw new Error(netPermission.reason ?? 'Uploads paused');
+  };
+
   const run = async () => {
+    await ensureNetwork();
     const permission = await MediaLibrary.requestPermissionsAsync();
     if (!permission.granted) {
       status.phase = 'error';
@@ -98,6 +109,7 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
       emit('Permission denied');
       return;
     }
+    log('sync', 'full sync started');
 
     const sizeCache = await loadSizeCache();
     let after: string | undefined;
@@ -162,6 +174,7 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
       // Hash + upload what's needed, strictly one file at a time.
       for (const candidate of work) {
         if (cancelled) break;
+        await ensureNetwork();
         try {
           const localUri = candidate.localUri ?? (await localUriFor(candidate.asset));
           const outcome = await hashAndUpload(
@@ -186,19 +199,22 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
         } catch (err) {
           status.counts.failed++;
           status.lastError = `${candidate.asset.filename}: ${String(err)}`;
+          logError('sync', `failed ${candidate.asset.filename}`, err);
           emit();
         }
       }
     }
 
     status.phase = cancelled ? 'cancelled' : 'done';
+    log('sync', `full sync ${status.phase}`, status.counts);
     emit(cancelled ? 'Cancelled' : 'Sync complete');
   };
 
   run().catch((err) => {
     status.phase = 'error';
     status.lastError = String(err);
-    emit('Sync failed');
+    logError('sync', 'full sync stopped', err);
+    emit('Sync stopped');
   });
 
   return {
