@@ -2,31 +2,25 @@ import { File } from 'expo-file-system';
 import type { ImagePickerAsset } from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 
-import { type Session } from './api';
-import { log, logError } from './log';
-import { uploadAllowed } from './network';
+import { log } from './log';
 import {
   SUPPORTED_EXTENSIONS,
   assetMtime,
   extensionOf,
-  hashAndUpload,
-  manifestCheck,
   stablePath,
 } from './upload-protocol';
+import * as queue from './upload-queue';
 
-export type UploadStatus =
-  | 'pending'
-  | 'checking'
-  | 'hashing'
-  | 'uploading'
-  | 'done'
-  | 'already-uploaded'
-  | 'unsupported'
-  | 'error';
+// Picker flow: turn picked assets into upload-queue items. The queue owns the
+// actual uploading, so picking and sharing returns immediately and the user
+// can keep using the app while the queue drains.
+
+export type UploadStatus = queue.QueueItemStatus | 'ready' | 'unsupported';
 
 export interface UploadFile {
-  key: string;
+  key: string; // same key the queue item uses, so status flows back by key
   asset: ImagePickerAsset;
+  name: string;
   path: string;
   size: number;
   mtime: number; // milliseconds since epoch
@@ -94,80 +88,37 @@ export async function prepareFiles(assets: ImagePickerAsset[]): Promise<UploadFi
     const path = asset.assetId ? stablePath(asset.assetId, name) : name;
     const supported = SUPPORTED_EXTENSIONS.has(extensionOf(name));
     return {
-      key: `${asset.assetId ?? asset.uri}-${index}`,
+      key: asset.assetId ? queue.assetKey(asset.assetId) : `picker:${asset.uri}`,
       asset,
+      name,
       path,
       size,
       mtime: Math.round(mtime),
-      status: supported ? 'pending' : 'unsupported',
+      status: supported ? 'ready' : 'unsupported',
       error: supported ? undefined : 'File type not supported by the server',
     } as UploadFile;
   });
 }
 
-// Uploads the given files (skipping unsupported ones). Safe to call again
-// with just the failed files — the server manifest is the source of truth, so
-// a retry simply re-runs the protocol for those paths.
-export async function uploadFiles(
-  session: Session,
-  files: UploadFile[],
-  onUpdate: (file: UploadFile) => void
-): Promise<void> {
-  const candidates = files.filter((f) => f.status !== 'unsupported');
-  if (candidates.length === 0) return;
-
-  const update = (file: UploadFile, changes: Partial<UploadFile>) => {
-    Object.assign(file, changes);
-    onUpdate(file);
-  };
-
-  // Same network rule as the sync flows: un-metered Wi-Fi unless the user
-  // opted in to mobile data.
-  const netPermission = await uploadAllowed();
-  if (!netPermission.allowed) {
-    candidates.forEach((f) => update(f, { status: 'error', error: netPermission.reason ?? 'Uploads paused' }));
-    return;
-  }
-  log('picker', `uploading ${candidates.length} picked files`);
-
-  candidates.forEach((f) => update(f, { status: 'checking', error: undefined }));
-
-  // Step 1: manifest — the server answers with the paths it doesn't have yet.
-  let neededPaths: Set<string>;
-  try {
-    neededPaths = await manifestCheck(session, candidates);
-  } catch (err) {
-    candidates.forEach((f) => update(f, { status: 'error', error: String(err) }));
-    return;
-  }
-
-  candidates
-    .filter((f) => !neededPaths.has(f.path))
-    .forEach((f) => update(f, { status: 'already-uploaded' }));
-
-  // Steps 2+3: hash and upload one file at a time, so one bad file can't
-  // fail the whole batch and per-file status stays accurate.
-  for (const file of candidates.filter((f) => neededPaths.has(f.path))) {
-    try {
-      const outcome = await hashAndUpload(
-        session,
-        {
-          path: file.path,
-          mtime: file.mtime,
-          size: file.size,
-          localUri: file.asset.uri,
-          // Only cache hashes under a stable identity; picker temp files
-          // without an assetId have none.
-          cacheKey: file.asset.assetId
-            ? `${file.asset.assetId}:${file.mtime}:${file.size}`
-            : null,
-        },
-        (phase) => update(file, { status: phase })
-      );
-      update(file, { status: outcome === 'deduped' ? 'already-uploaded' : 'done' });
-    } catch (err) {
-      logError('picker', `failed ${file.path}`, err);
-      update(file, { status: 'error', error: String(err) });
-    }
-  }
+// Queues the given files (skipping unsupported ones) and kicks the drain.
+// Safe to call again with just the failed files — the server manifest is the
+// source of truth, so a retry simply re-runs the protocol for those paths.
+export async function enqueuePicked(files: UploadFile[]): Promise<void> {
+  const supported = files.filter((f) => f.status !== 'unsupported');
+  if (supported.length === 0) return;
+  log('picker', `queueing ${supported.length} picked files`);
+  await queue.enqueue(
+    supported.map((f) => ({
+      key: f.key,
+      source: 'picker' as const,
+      assetId: f.asset.assetId ?? null,
+      localUri: f.asset.uri,
+      thumbUri: f.asset.uri,
+      filename: f.name,
+      path: f.path,
+      mtime: f.mtime,
+      size: f.size,
+    }))
+  );
+  queue.kick('picker');
 }

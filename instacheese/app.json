@@ -30,6 +30,7 @@
       "expo-router",
       "expo-secure-store",
       "expo-video",
+      "expo-background-task",
       [
         "expo-image-picker",
         {

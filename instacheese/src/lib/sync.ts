@@ -10,16 +10,16 @@ import {
   SUPPORTED_EXTENSIONS,
   assetMtime,
   extensionOf,
-  hashAndUpload,
   manifestCheck,
   stablePath,
 } from './upload-protocol';
+import * as queue from './upload-queue';
 
 // Camera-roll sync: enumerate the media library directly (no picker, no
 // per-pick cache copies) and let the server's manifest decide what needs
-// uploading. Files stream straight from their library location one at a
-// time, so peak temp disk usage is zero and re-runs skip everything the
-// server already has.
+// uploading. Anything missing is handed to the shared upload queue, so the
+// scan finishes fast and the user can leave this screen while the queue
+// drains in the background.
 
 const PAGE_SIZE = 200;
 
@@ -27,9 +27,8 @@ export interface SyncCounts {
   scanned: number;
   unsupported: number;
   upToDate: number; // manifest said the server already has it
-  deduped: number; // content already on the server under another path/device
-  uploaded: number;
-  failed: number;
+  queued: number; // handed to the upload queue
+  failed: number; // couldn't be read/stat'ed during the scan
 }
 
 export interface SyncStatus {
@@ -48,7 +47,6 @@ interface Candidate {
   path: string;
   mtime: number; // milliseconds since epoch
   size: number;
-  localUri: string | null;
 }
 
 // Looking up localUri + size for every asset makes re-scans slow on big
@@ -73,29 +71,12 @@ async function saveSizeCache(cache: SizeCache): Promise<void> {
   }
 }
 
-// getAssetInfoAsync reads EXIF (including GPS) on Android 10+, which needs
-// the ACCESS_MEDIA_LOCATION permission and rejects wholesale without it — a
-// build predating that permission can't stat anything through it. The
-// asset's library uri is a plain readable file:// path on Android, so fall
-// back to it rather than failing the file. (iOS uris are ph:// and unusable
-// here, but iOS never rejects this call over EXIF access.)
-async function localUriFor(asset: MediaLibrary.Asset): Promise<string> {
-  try {
-    const info = await MediaLibrary.getAssetInfoAsync(asset);
-    if (info.localUri) return info.localUri;
-    throw new Error('Original not available on this device');
-  } catch (err) {
-    if (asset.uri.startsWith('file://')) return asset.uri;
-    throw err;
-  }
-}
-
 export function startSync(session: Session, onStatus: (status: SyncStatus) => void): SyncHandle {
   let cancelled = false;
   const status: SyncStatus = {
     phase: 'running',
     activity: 'Starting…',
-    counts: { scanned: 0, unsupported: 0, upToDate: 0, deduped: 0, uploaded: 0, failed: 0 },
+    counts: { scanned: 0, unsupported: 0, upToDate: 0, queued: 0, failed: 0 },
     lastError: null,
   };
   const emit = (activity?: string) => {
@@ -103,9 +84,8 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
     onStatus({ ...status, counts: { ...status.counts } });
   };
 
-  // Uploads only on allowed networks (un-metered Wi-Fi unless the user
-  // opted in to mobile data). Checked at start and between files, since
-  // connectivity can change mid-run.
+  // The scan talks to the server (manifest), so it follows the same network
+  // rule as uploads: un-metered Wi-Fi unless the user opted in to mobile data.
   const ensureNetwork = async () => {
     const netPermission = await uploadAllowed();
     if (!netPermission.allowed) throw new Error(netPermission.reason ?? 'Uploads paused');
@@ -120,7 +100,7 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
       emit('Permission denied');
       return;
     }
-    log('sync', 'full sync started');
+    log('sync', 'full sync scan started');
 
     const sizeCache = await loadSizeCache();
     let after: string | undefined;
@@ -149,10 +129,9 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
         const mtime = assetMtime(asset);
         const cacheKey = `${asset.id}:${mtime}`;
         let size = sizeCache[cacheKey];
-        let localUri: string | null = null;
         if (size === undefined) {
           try {
-            localUri = await localUriFor(asset);
+            const localUri = await queue.libraryLocalUri(asset.id, asset.uri);
             const stat = await LegacyFileSystem.getInfoAsync(localUri);
             if (!stat.exists || stat.size === undefined) throw new Error('Could not stat file');
             size = stat.size;
@@ -168,63 +147,51 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
           path: stablePath(asset.id, asset.filename),
           mtime,
           size,
-          localUri,
         });
         if (status.counts.scanned % 25 === 0) emit(`Scanning library… (${status.counts.scanned})`);
       }
       await saveSizeCache(sizeCache);
       if (cancelled || candidates.length === 0) continue;
 
-      // Manifest for this page: the server answers with what it doesn't have.
+      // Manifest for this page: the server answers with what it doesn't
+      // have; that goes straight into the shared upload queue.
       emit(`Checking ${candidates.length} files with the server…`);
       const neededPaths = await manifestCheck(session, candidates);
       const work = candidates.filter((c) => neededPaths.has(c.path));
       status.counts.upToDate += candidates.length - work.length;
-      emit();
-
-      // Hash + upload what's needed, strictly one file at a time.
-      for (const candidate of work) {
-        if (cancelled) break;
-        await ensureNetwork();
-        try {
-          const localUri = candidate.localUri ?? (await localUriFor(candidate.asset));
-          const outcome = await hashAndUpload(
-            session,
-            {
-              path: candidate.path,
-              mtime: candidate.mtime,
-              size: candidate.size,
-              localUri,
-              cacheKey: `${candidate.asset.id}:${candidate.mtime}:${candidate.size}`,
-            },
-            (phase) =>
-              emit(
-                phase === 'hashing'
-                  ? `Hashing ${candidate.asset.filename}…`
-                  : `Uploading ${candidate.asset.filename}…`
-              )
-          );
-          if (outcome === 'deduped') status.counts.deduped++;
-          else status.counts.uploaded++;
-          emit();
-        } catch (err) {
-          status.counts.failed++;
-          status.lastError = `${candidate.asset.filename}: ${String(err)}`;
-          logError('sync', `failed ${candidate.asset.filename}`, err);
-          emit();
-        }
+      if (work.length > 0) {
+        status.counts.queued += await queue.enqueue(
+          work.map((c) => ({
+            key: queue.assetKey(c.asset.id),
+            source: 'sync' as const,
+            assetId: c.asset.id,
+            thumbUri: c.asset.uri,
+            filename: c.asset.filename,
+            path: c.path,
+            mtime: c.mtime,
+            size: c.size,
+          }))
+        );
+        queue.kick('sync');
       }
+      emit();
     }
 
     status.phase = cancelled ? 'cancelled' : 'done';
-    log('sync', `full sync ${status.phase}`, status.counts);
-    emit(cancelled ? 'Cancelled' : 'Sync complete');
+    log('sync', `full sync scan ${status.phase}`, status.counts);
+    emit(
+      cancelled
+        ? 'Cancelled'
+        : status.counts.queued > 0
+          ? `Scan complete — ${status.counts.queued} queued for upload`
+          : 'Scan complete — everything is already on the server'
+    );
   };
 
   run().catch((err) => {
     status.phase = 'error';
     status.lastError = String(err);
-    logError('sync', 'full sync stopped', err);
+    logError('sync', 'full sync scan stopped', err);
     emit('Sync stopped');
   });
 

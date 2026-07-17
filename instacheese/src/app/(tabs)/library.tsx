@@ -13,7 +13,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/lib/auth';
-import * as backup from '@/lib/backup-manager';
 import {
   libraryCounts,
   listAssets,
@@ -24,11 +23,13 @@ import {
   type LibraryAsset,
   type LibraryCounts,
 } from '@/lib/library-db';
-import { type PartialSyncStatus } from '@/lib/partial-sync';
 import { accent, usePalette } from '@/lib/theme';
+import * as queue from '@/lib/upload-queue';
 
-// Partial sync: a browsable catalog of the camera roll where each photo can
-// be included in or excluded from backup, with per-photo sync status.
+// Backup: a browsable catalog of the camera roll where each photo can be
+// included in or excluded from backup, with per-photo sync status. Hitting
+// "Back up" hands the selection to the shared upload queue — keep selecting,
+// switch screens, or close the app; the queue keeps draining.
 
 const PAGE = 120;
 
@@ -49,15 +50,26 @@ export default function LibraryScreen() {
   const [scanning, setScanning] = useState(false);
   const [scanCount, setScanCount] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [syncStatus, setSyncStatus] = useState<PartialSyncStatus | null>(backup.getStatus());
+  const [summary, setSummary] = useState<queue.QueueSummary>(queue.getSummary());
   const endReached = useRef(false);
+  const countsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const canWrite = !!user?.can_write;
-  const running = syncStatus?.phase === 'running';
+  const running = summary.state === 'running';
 
   const refreshCounts = useCallback(async () => {
     setCounts(await libraryCounts());
   }, []);
+
+  // Queue settles arrive per file; refresh the chip counts on a small
+  // debounce instead of once per event.
+  const refreshCountsSoon = useCallback(() => {
+    if (countsTimer.current) clearTimeout(countsTimer.current);
+    countsTimer.current = setTimeout(() => {
+      countsTimer.current = null;
+      refreshCounts();
+    }, 500);
+  }, [refreshCounts]);
 
   const loadPage = useCallback(
     async (reset: boolean, activeFilter: AssetFilter) => {
@@ -90,20 +102,43 @@ export default function LibraryScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canWrite]);
 
-  // The backup run is owned by backup-manager (it can also start
-  // automatically), so this screen just observes it.
+  // The upload queue owns the run (it can also start automatically or in the
+  // background), so this screen just observes it. Byte-progress broadcasts
+  // arrive every ~300ms during uploads; skip re-rendering the whole thumbnail
+  // grid for changes this screen doesn't display.
   useEffect(() => {
-    const unStatus = backup.subscribeStatus(setSyncStatus);
-    const unAssets = backup.subscribeAssets((id, result, error) => {
-      setAssets((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, status: result, error: error ?? null } : a))
+    const unSummary = queue.subscribeSummary((next) => {
+      setSummary((prev) =>
+        prev.state === next.state &&
+        prev.reason === next.reason &&
+        prev.remaining === next.remaining &&
+        prev.failed === next.failed &&
+        prev.finished === next.finished &&
+        prev.current?.key === next.current?.key &&
+        prev.current?.phase === next.current?.phase
+          ? prev
+          : next
       );
     });
+    const unItems = queue.subscribeItems((item) => {
+      if (!item.assetId) return;
+      const status =
+        item.status === 'done' || item.status === 'exists'
+          ? 'synced'
+          : item.status === 'failed'
+            ? 'failed'
+            : 'pending';
+      setAssets((prev) =>
+        prev.map((a) => (a.id === item.assetId ? { ...a, status, error: item.error } : a))
+      );
+      if (status !== 'pending') refreshCountsSoon();
+    });
     return () => {
-      unStatus();
-      unAssets();
+      unSummary();
+      unItems();
+      if (countsTimer.current) clearTimeout(countsTimer.current);
     };
-  }, []);
+  }, [refreshCountsSoon]);
 
   const changeFilter = (next: AssetFilter) => {
     setFilter(next);
@@ -116,6 +151,10 @@ export default function LibraryScreen() {
     if (!asset.supported) return;
     const selected = !asset.selected;
     await setSelected([asset.id], selected);
+    // Un-checking also pulls the photo back out of the upload queue (unless
+    // it's the one mid-upload right now). Scoped to backup-queued items so it
+    // can't cancel an upload the picker or a full sync queued independently.
+    if (!selected) await queue.removeQueued([queue.assetKey(asset.id)], 'backup');
     setAssets((prev) =>
       prev.map((a) =>
         a.id === asset.id
@@ -134,18 +173,21 @@ export default function LibraryScreen() {
 
   const selectAll = async (selected: boolean) => {
     await setAllSelected(selected);
+    if (!selected) await queue.removeQueuedBackup();
     await loadPage(true, filter);
     await refreshCounts();
   };
 
-  const begin = () => {
-    if (!session || running) return;
-    backup.start(session, 'manual');
+  // Queue everything marked for backup and let the shared queue drain it.
+  // Works mid-run too, so newly selected photos can be added anytime.
+  // includeSynced re-checks locally-'synced' photos against the server
+  // manifest, so a manual backup notices if the server ever lost a file.
+  const begin = async () => {
+    if (!session) return;
+    await queue.enqueueBackupPending({ includeSynced: true });
+    queue.kick('backup');
+    refreshCounts();
   };
-
-  useEffect(() => {
-    if (syncStatus && syncStatus.phase !== 'running') refreshCounts();
-  }, [syncStatus, refreshCounts]);
 
   const showDetails = (item: LibraryAsset) => {
     const lines = [
@@ -166,7 +208,6 @@ export default function LibraryScreen() {
       style={styles.cell}
       onPress={() => toggle(item)}
       onLongPress={() => showDetails(item)}
-      disabled={running}
     >
       <Image source={{ uri: item.uri }} style={styles.thumb} contentFit="cover" recyclingKey={item.id} />
       {!item.supported ? (
@@ -203,11 +244,13 @@ export default function LibraryScreen() {
     </Pressable>
   );
 
+  const showStatusRow = running || summary.state === 'paused' || summary.remaining > 0 || summary.failed > 0;
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
       <View style={[styles.titleBar, { borderColor: palette.border }]}>
         <Text style={[styles.title, { color: palette.text }]}>Back up library</Text>
-        <Pressable onPress={rescan} disabled={scanning || running} hitSlop={8}>
+        <Pressable onPress={rescan} disabled={scanning} hitSlop={8}>
           {scanning ? (
             <ActivityIndicator size="small" />
           ) : (
@@ -277,42 +320,43 @@ export default function LibraryScreen() {
             }
           />
 
-          {syncStatus ? (
+          {showStatusRow ? (
             <View style={[styles.statusRow, { borderColor: palette.border }]}>
               {running ? (
                 <ActivityIndicator size="small" />
               ) : (
                 <Ionicons
                   name={
-                    syncStatus.phase === 'done'
-                      ? 'checkmark-circle'
-                      : syncStatus.phase === 'paused'
-                        ? 'cloud-offline-outline'
-                        : 'alert-circle'
+                    summary.state === 'paused'
+                      ? 'cloud-offline-outline'
+                      : summary.failed > 0
+                        ? 'alert-circle'
+                        : 'checkmark-circle'
                   }
                   size={18}
                   color={
-                    syncStatus.phase === 'done'
-                      ? '#2E7D32'
-                      : syncStatus.phase === 'paused'
-                        ? '#E8A33D'
-                        : '#ED4956'
+                    summary.state === 'paused'
+                      ? '#E8A33D'
+                      : summary.failed > 0
+                        ? '#ED4956'
+                        : '#2E7D32'
                   }
                 />
               )}
               <View style={{ flex: 1 }}>
                 <Text style={{ color: palette.text, fontSize: 13 }} numberOfLines={2}>
-                  {syncStatus.activity}
+                  {running
+                    ? summary.current
+                      ? `${summary.current.phase === 'uploading' ? 'Uploading' : summary.current.phase === 'hashing' ? 'Preparing' : 'Checking'} ${summary.current.filename}…`
+                      : 'Uploading…'
+                    : summary.state === 'paused'
+                      ? summary.reason ?? 'Uploads paused'
+                      : 'Uploads idle'}
                 </Text>
                 <Text style={{ color: palette.subtleText, fontSize: 12 }} numberOfLines={1}>
-                  {syncStatus.counts.uploaded + syncStatus.counts.deduped} uploaded ·{' '}
-                  {syncStatus.counts.upToDate} already there · {syncStatus.counts.failed} failed
+                  {summary.remaining} in queue · {summary.finished} uploaded · {summary.failed}{' '}
+                  failed
                 </Text>
-                {syncStatus.lastError ? (
-                  <Text style={{ color: '#ED4956', fontSize: 12 }} numberOfLines={2}>
-                    {syncStatus.lastError}
-                  </Text>
-                ) : null}
               </View>
             </View>
           ) : null}
@@ -321,25 +365,34 @@ export default function LibraryScreen() {
             <Pressable
               style={[styles.button, styles.secondaryButton, { borderColor: accent }]}
               onPress={() => selectAll((counts?.selected ?? 0) === 0)}
-              disabled={running || scanning}
+              disabled={scanning}
             >
               <Text style={[styles.buttonText, { color: accent }]}>
                 {(counts?.selected ?? 0) === 0 ? 'Select all' : 'Clear selection'}
               </Text>
             </Pressable>
-            <Pressable
-              style={[
-                styles.button,
-                running ? styles.cancelButton : { backgroundColor: accent },
-                !running && (counts?.pending ?? 0) === 0 && { opacity: 0.5 },
-              ]}
-              onPress={running ? backup.cancel : begin}
-              disabled={!running && (counts?.pending ?? 0) === 0}
-            >
-              <Text style={[styles.buttonText, { color: running ? '#ED4956' : '#fff' }]}>
-                {running ? 'Stop' : `Back up ${counts?.pending || ''}`}
-              </Text>
-            </Pressable>
+            {(counts?.pending ?? 0) > 0 || !running ? (
+              <Pressable
+                style={[
+                  styles.button,
+                  { backgroundColor: accent },
+                  (counts?.pending ?? 0) === 0 && { opacity: 0.5 },
+                ]}
+                onPress={begin}
+                disabled={(counts?.pending ?? 0) === 0}
+              >
+                <Text style={[styles.buttonText, { color: '#fff' }]}>
+                  {`Back up ${counts?.pending || ''}`}
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={[styles.button, styles.cancelButton]}
+                onPress={() => queue.stop()}
+              >
+                <Text style={[styles.buttonText, { color: '#ED4956' }]}>Stop</Text>
+              </Pressable>
+            )}
           </View>
         </>
       )}

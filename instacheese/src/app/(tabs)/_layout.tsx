@@ -3,14 +3,15 @@ import { Tabs } from 'expo-router';
 import { useEffect } from 'react';
 
 import { useAuth } from '@/lib/auth';
-import { startAutoRetry } from '@/lib/backup-manager';
 import { accent } from '@/lib/theme';
+import { startAutoRetry } from '@/lib/upload-queue';
 
 export default function TabsLayout() {
   const { session, user } = useAuth();
 
-  // Anything marked for backup retries periodically while the app is open —
-  // on a timer, on foreground, and when the network becomes usable.
+  // Anything queued (or marked for backup) retries periodically while the
+  // app is open — on a timer, on foreground, and when the network becomes
+  // usable — and resumes whatever a previous app run left in the queue.
   useEffect(() => {
     if (!session || !user?.can_write) return;
     return startAutoRetry(session);

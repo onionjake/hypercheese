@@ -29,8 +29,8 @@ export default function SyncScreen() {
   const counts = status?.counts;
   const stats: [string, number | undefined][] = [
     ['Scanned', counts?.scanned],
-    ['Already on server', counts && counts.upToDate + counts.deduped],
-    ['Uploaded', counts?.uploaded],
+    ['Already on server', counts?.upToDate],
+    ['Queued for upload', counts?.queued],
     ['Not supported yet', counts?.unsupported],
     ['Failed', counts?.failed],
   ];
@@ -51,7 +51,8 @@ export default function SyncScreen() {
         <ScrollView contentContainerStyle={styles.body}>
           <Text style={{ color: palette.subtleText, textAlign: 'center' }}>
             Uploads your whole camera roll in original quality. Files the server already has are
-            skipped, so it&apos;s safe to run again anytime — it just picks up where it left off.
+            skipped; everything else is queued for upload, so it&apos;s safe to run again anytime —
+            it just picks up where it left off.
           </Text>
 
           {status ? (
@@ -93,12 +94,13 @@ export default function SyncScreen() {
             onPress={running ? cancel : begin}
           >
             <Text style={[styles.buttonText, { color: running ? '#ED4956' : '#fff' }]}>
-              {running ? 'Stop syncing' : status ? 'Sync again' : 'Start sync'}
+              {running ? 'Stop scanning' : status ? 'Scan again' : 'Start sync'}
             </Text>
           </Pressable>
 
           <Text style={{ color: palette.subtleText, fontSize: 12, textAlign: 'center' }}>
-            Keep the app open while syncing. Large videos can take a while to prepare and upload.
+            Scanning queues anything missing into the upload queue — you can leave this screen and
+            watch progress from the uploads pill in the corner.
           </Text>
         </ScrollView>
       )}

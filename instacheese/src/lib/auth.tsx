@@ -5,10 +5,11 @@ import { Platform } from 'react-native';
 import * as api from './api';
 import type { Session } from './api';
 import type { CurrentUser } from './types';
+import { clearAll as clearUploadQueue } from './upload-queue';
 
 const STORAGE_KEY = 'instacheese.session';
 
-interface StoredSession extends Session {
+export interface StoredSession extends Session {
   user: CurrentUser | null;
 }
 
@@ -22,7 +23,9 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function loadStored(): Promise<StoredSession | null> {
+// Also used outside React (the background upload task) to act on behalf of
+// the signed-in user without an AuthProvider.
+export async function loadStoredSession(): Promise<StoredSession | null> {
   try {
     const raw = await SecureStore.getItemAsync(STORAGE_KEY);
     if (!raw) return null;
@@ -45,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const stored = await loadStored();
+      const stored = await loadStoredSession();
       if (cancelled) return;
       if (!stored) {
         setStatus('signedOut');
@@ -133,6 +136,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (session?.mode === 'session') {
       await api.sessionLogout(session);
     }
+    // The upload queue persists across restarts, so it must not survive a
+    // sign-out — the next account on this device would upload these files.
+    await clearUploadQueue().catch(() => {});
     await SecureStore.deleteItemAsync(STORAGE_KEY);
     setSession(null);
     setUser(null);

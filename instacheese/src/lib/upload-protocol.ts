@@ -207,7 +207,8 @@ export async function manifestCheck(
 export async function hashAndUpload(
   session: Session,
   file: ProtocolFile & { localUri: string; cacheKey: string | null },
-  onPhase?: (phase: 'hashing' | 'uploading') => void
+  onPhase?: (phase: 'hashing' | 'uploading') => void,
+  onProgress?: (bytesSent: number, bytesTotal: number) => void
 ): Promise<'uploaded' | 'deduped'> {
   onPhase?.('hashing');
   const sha = await cachedSha256OfFile(file.cacheKey, file.localUri, file.size);
@@ -221,17 +222,31 @@ export async function hashAndUpload(
   }
 
   onPhase?.('uploading');
-  const result = await LegacyFileSystem.uploadAsync(`${session.baseUrl}/files/upload`, file.localUri, {
-    httpMethod: 'PUT',
-    uploadType: LegacyFileSystem.FileSystemUploadType.BINARY_CONTENT,
-    headers: {
-      ...authHeaders(session),
-      'X-Path': file.path,
-      'X-MTime': mtimeParam(file.mtime),
-      'X-SHA256': sha,
-      'X-Size': String(file.size),
+  const task = LegacyFileSystem.createUploadTask(
+    `${session.baseUrl}/files/upload`,
+    file.localUri,
+    {
+      httpMethod: 'PUT',
+      uploadType: LegacyFileSystem.FileSystemUploadType.BINARY_CONTENT,
+      // On iOS a background NSURLSession keeps an in-flight transfer going
+      // when the app is backgrounded mid-upload.
+      sessionType: LegacyFileSystem.FileSystemSessionType.BACKGROUND,
+      headers: {
+        ...authHeaders(session),
+        'X-Path': file.path,
+        'X-MTime': mtimeParam(file.mtime),
+        'X-SHA256': sha,
+        'X-Size': String(file.size),
+      },
     },
-  });
+    onProgress
+      ? (data) => onProgress(data.totalBytesSent, data.totalBytesExpectedToSend)
+      : undefined
+  );
+  const result = await task.uploadAsync();
+  if (!result) {
+    throw new Error('Upload did not complete');
+  }
   if (result.status < 200 || result.status >= 300) {
     log('upload', `PUT ${file.path} failed (${result.status}): ${(result.body || '').slice(0, 500)}`);
     throw new Error(result.body || `Upload failed (${result.status})`);

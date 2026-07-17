@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -14,30 +14,45 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/lib/auth';
 import { accent, usePalette } from '@/lib/theme';
-import { prepareFiles, uploadFiles, type UploadFile, type UploadStatus } from '@/lib/uploader';
+import { enqueuePicked, prepareFiles, type UploadFile, type UploadStatus } from '@/lib/uploader';
+import * as queue from '@/lib/upload-queue';
 
 const STATUS_LABELS: Record<UploadStatus, string> = {
-  pending: 'Ready',
+  ready: 'Ready',
+  queued: 'Queued',
   checking: 'Checking…',
   hashing: 'Preparing…',
   uploading: 'Uploading…',
   done: 'Uploaded',
-  'already-uploaded': 'Already uploaded',
+  exists: 'Already uploaded',
   unsupported: 'Not supported',
-  error: 'Failed',
+  failed: 'Failed',
 };
 
+const IN_FLIGHT: UploadStatus[] = ['queued', 'checking', 'hashing', 'uploading'];
+
 export default function UploadScreen() {
-  const { session, user } = useAuth();
+  const { user } = useAuth();
   const palette = usePalette();
   const [files, setFiles] = useState<UploadFile[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [doneMessage, setDoneMessage] = useState<string | null>(null);
 
   const canWrite = !!user?.can_write;
 
+  // The queue owns the uploads; this screen just mirrors status back onto the
+  // picked rows (keys match queue keys).
+  useEffect(
+    () =>
+      queue.subscribeItems((item) => {
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.key === item.key ? { ...f, status: item.status, error: item.error ?? undefined } : f
+          )
+        );
+      }),
+    []
+  );
+
   const pick = async () => {
-    setDoneMessage(null);
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images', 'videos'],
       allowsMultipleSelection: true,
@@ -51,42 +66,33 @@ export default function UploadScreen() {
         ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
     });
     if (result.canceled) return;
-    setFiles(await prepareFiles(result.assets));
+    // Append to what's already listed (anything mid-upload keeps going), so
+    // the user can pick more while earlier picks are still in the queue.
+    const picked = await prepareFiles(result.assets);
+    setFiles((prev) => {
+      const pickedKeys = new Set(picked.map((f) => f.key));
+      return [...prev.filter((f) => !pickedKeys.has(f.key)), ...picked];
+    });
   };
 
-  const run = async (targets: UploadFile[]) => {
-    if (!session || busy || targets.length === 0) return;
-    setBusy(true);
-    setDoneMessage(null);
-    try {
-      await uploadFiles(session, targets, (updated) => {
-        setFiles((prev) => prev.map((f) => (f.key === updated.key ? { ...updated } : f)));
-      });
-      setFiles((current) => {
-        const uploaded = current.filter(
-          (f) => f.status === 'done' || f.status === 'already-uploaded'
-        ).length;
-        const failed = current.filter((f) => f.status === 'error').length;
-        setDoneMessage(
-          failed === 0
-            ? `Shared ${uploaded} ${uploaded === 1 ? 'item' : 'items'} with the family 🧀`
-            : `${uploaded} uploaded, ${failed} failed`
-        );
-        return current;
-      });
-    } finally {
-      setBusy(false);
-    }
+  // Hands files to the shared upload queue and returns immediately — watch
+  // progress here, from the uploads pill, or leave the screen entirely.
+  const share = async (targets: UploadFile[]) => {
+    if (targets.length === 0) return;
+    await enqueuePicked(targets);
   };
 
-  const upload = () => run(files);
-  // Retry re-runs the whole protocol for just the failed files: the server
-  // manifest remains the source of truth, so anything that actually made it
-  // up in the meantime resolves to "already uploaded".
-  const retryFailed = () => run(files.filter((f) => f.status === 'error'));
+  const readyFiles = files.filter((f) => f.status === 'ready');
+  const failedFiles = files.filter((f) => f.status === 'failed');
+  const inFlightCount = files.filter((f) => IN_FLIGHT.includes(f.status)).length;
+  const uploadedCount = files.filter((f) => f.status === 'done' || f.status === 'exists').length;
 
-  const pendingCount = files.filter((f) => f.status === 'pending').length;
-  const failedCount = files.filter((f) => f.status === 'error').length;
+  const summaryLine =
+    files.length > 0 && inFlightCount === 0 && readyFiles.length === 0 && uploadedCount > 0
+      ? failedFiles.length === 0
+        ? `Shared ${uploadedCount} ${uploadedCount === 1 ? 'item' : 'items'} with the family 🧀`
+        : `${uploadedCount} uploaded, ${failedFiles.length} failed`
+      : null;
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
@@ -119,12 +125,12 @@ export default function UploadScreen() {
                 <Image source={{ uri: file.asset.uri }} style={styles.thumb} contentFit="cover" />
                 <View style={styles.rowText}>
                   <Text style={{ color: palette.text }} numberOfLines={1}>
-                    {file.path}
+                    {file.name}
                   </Text>
                   <Text
                     style={{
                       color:
-                        file.status === 'error' || file.status === 'unsupported'
+                        file.status === 'failed' || file.status === 'unsupported'
                           ? '#ED4956'
                           : file.status === 'done'
                             ? '#2E7D32'
@@ -134,55 +140,54 @@ export default function UploadScreen() {
                     numberOfLines={2}
                   >
                     {STATUS_LABELS[file.status]}
-                    {file.error && file.status === 'error' ? ` — ${file.error}` : ''}
+                    {file.error && file.status === 'failed' ? ` — ${file.error}` : ''}
                   </Text>
                 </View>
                 {['checking', 'hashing', 'uploading'].includes(file.status) ? (
                   <ActivityIndicator size="small" />
-                ) : file.status === 'done' || file.status === 'already-uploaded' ? (
+                ) : file.status === 'done' || file.status === 'exists' ? (
                   <Ionicons name="checkmark-circle" size={22} color="#2E7D32" />
                 ) : null}
               </View>
             )}
           />
 
-          {doneMessage ? (
-            <Text style={[styles.done, { color: palette.text }]}>{doneMessage}</Text>
+          {summaryLine ? (
+            <Text style={[styles.done, { color: palette.text }]}>{summaryLine}</Text>
           ) : null}
 
           <View style={styles.buttons}>
             <Pressable
               style={[styles.button, styles.secondaryButton, { borderColor: accent }]}
               onPress={pick}
-              disabled={busy}
             >
               <Text style={[styles.buttonText, { color: accent }]}>
-                {files.length ? 'Pick different' : 'Pick photos'}
+                {files.length ? 'Pick more' : 'Pick photos'}
               </Text>
             </Pressable>
-            {!busy && failedCount > 0 ? (
+            {failedFiles.length > 0 ? (
               <Pressable
                 style={[styles.button, styles.secondaryButton, { borderColor: '#ED4956' }]}
-                onPress={retryFailed}
+                onPress={() => share(failedFiles)}
               >
                 <Text style={[styles.buttonText, { color: '#ED4956' }]}>
-                  Retry {failedCount} failed
+                  Retry {failedFiles.length} failed
                 </Text>
               </Pressable>
             ) : null}
             {files.length > 0 ? (
               <Pressable
-                style={[styles.button, { backgroundColor: accent }, (busy || pendingCount === 0) && { opacity: 0.5 }]}
-                onPress={upload}
-                disabled={busy || pendingCount === 0}
+                style={[
+                  styles.button,
+                  { backgroundColor: accent },
+                  readyFiles.length === 0 && { opacity: 0.5 },
+                ]}
+                onPress={() => share(readyFiles)}
+                disabled={readyFiles.length === 0}
               >
-                {busy ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={[styles.buttonText, { color: '#fff' }]}>
-                    Upload {pendingCount || ''}
-                  </Text>
-                )}
+                <Text style={[styles.buttonText, { color: '#fff' }]}>
+                  Upload {readyFiles.length || ''}
+                </Text>
               </Pressable>
             ) : null}
           </View>
