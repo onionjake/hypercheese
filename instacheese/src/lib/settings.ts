@@ -4,10 +4,14 @@ export interface Settings {
   // Uploads normally require un-metered Wi-Fi; this opts in to cellular (and
   // metered Wi-Fi) uploads.
   uploadOnCellular: boolean;
+  // SAF directory the user granted for saving debug logs on Android, so the
+  // folder picker only appears once.
+  logDownloadDirUri: string | null;
 }
 
 const DEFAULTS: Settings = {
   uploadOnCellular: false,
+  logDownloadDirUri: null,
 };
 
 const SETTINGS_URI = `${LegacyFileSystem.documentDirectory}settings.json`;

@@ -22,7 +22,9 @@ export default function UploadIndicator() {
 
   if (!session || !user?.can_write) return null;
   // The queue screen shows all of this itself; the login screen has no user.
-  if (pathname === '/queue' || pathname === '/login') return null;
+  // The Backup tab has its own inline status row, and the pill would cover
+  // its "Back up" button.
+  if (pathname === '/queue' || pathname === '/login' || pathname === '/library') return null;
 
   const running = summary.state === 'running';
   const paused = summary.state === 'paused';

@@ -1,7 +1,17 @@
+import * as LegacyFileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/lib/auth';
@@ -24,12 +34,54 @@ export default function ProfileScreen() {
     await updateSettings({ uploadOnCellular: value });
   };
 
-  const shareLogs = async () => {
+  // Android: copy the archive into a folder the user picked once (Downloads,
+  // typically) via the Storage Access Framework. Returns null if the user
+  // cancelled the folder picker.
+  const saveToFolder = async (fileUri: string): Promise<string | null> => {
+    const { StorageAccessFramework } = LegacyFileSystem;
+    const filename = fileUri.split('/').pop()!;
+    const write = async (dirUri: string) => {
+      const dest = await StorageAccessFramework.createFileAsync(
+        dirUri,
+        filename,
+        'application/gzip'
+      );
+      const data = await LegacyFileSystem.readAsStringAsync(fileUri, {
+        encoding: LegacyFileSystem.EncodingType.Base64,
+      });
+      await LegacyFileSystem.writeAsStringAsync(dest, data, {
+        encoding: LegacyFileSystem.EncodingType.Base64,
+      });
+      return dest;
+    };
+
+    const remembered = (await getSettings()).logDownloadDirUri;
+    if (remembered) {
+      try {
+        return await write(remembered);
+      } catch {
+        // Grant was revoked or the folder is gone — ask again below.
+      }
+    }
+    const perm = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+    if (!perm.granted) return null;
+    await updateSettings({ logDownloadDirUri: perm.directoryUri });
+    return write(perm.directoryUri);
+  };
+
+  const downloadLogs = async () => {
     if (exporting) return;
     setExporting(true);
     try {
       const uri = await exportLogs();
-      if (await Sharing.isAvailableAsync()) {
+      const filename = uri.split('/').pop()!;
+      if (Platform.OS === 'android') {
+        if (await saveToFolder(uri)) {
+          Alert.alert('Logs downloaded', `Saved ${filename} to your chosen folder.`);
+        }
+      } else if (await Sharing.isAvailableAsync()) {
+        // No general downloads folder on iOS — the share sheet's "Save to
+        // Files" is the download path there.
         await Sharing.shareAsync(uri, {
           mimeType: 'application/gzip',
           dialogTitle: 'InstaCheese debug logs',
@@ -90,7 +142,7 @@ export default function ProfileScreen() {
 
         <Pressable
           style={[styles.button, { borderColor: palette.border }]}
-          onPress={shareLogs}
+          onPress={downloadLogs}
           disabled={exporting}
         >
           {exporting ? (
