@@ -1,4 +1,5 @@
 import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { AppState } from 'react-native';
 
 // Persistent debug log for the upload/sync flows. Lines accumulate in memory
 // and are flushed (whole current chunk) to disk on a short debounce; chunks
@@ -24,6 +25,9 @@ function chunkUri(index: number): string {
 async function init(): Promise<void> {
   if (!initPromise) {
     initPromise = (async () => {
+      // log() runs before this first disk read finishes (the "started" line
+      // at bundle load always does), buffering lines into `current` — append
+      // them after the disk contents rather than replacing (losing) them.
       try {
         await LegacyFileSystem.makeDirectoryAsync(LOG_DIR, { intermediates: true });
         const names = await LegacyFileSystem.readDirectoryAsync(LOG_DIR);
@@ -33,12 +37,12 @@ async function init(): Promise<void> {
           .map((m) => Number(m![1]))
           .sort((a, b) => a - b);
         chunkIndex = indexes.length ? indexes[indexes.length - 1] : 0;
-        current = indexes.length
+        const disk = indexes.length
           ? await LegacyFileSystem.readAsStringAsync(chunkUri(chunkIndex)).catch(() => '')
           : '';
+        current = disk + current;
       } catch {
         chunkIndex = 0;
-        current = '';
       }
     })();
   }
@@ -125,8 +129,33 @@ export async function clearLogs(): Promise<void> {
 // so flush before handing off to the default handler (which kills the app in
 // production). The startup line also makes restarts-after-crash visible:
 // silence followed by "started" reads as a process death.
+let crashLoggingInstalled = false;
+
 export function installCrashLogging(): void {
+  if (crashLoggingInstalled) return;
+  crashLoggingInstalled = true;
   log('app', 'started (bundle loaded)');
+  // An ANR or OOM kill never reaches the JS handlers below — the only
+  // evidence is what made it to disk beforehand. Persist the start marker
+  // immediately instead of waiting out the flush debounce.
+  flushLogs().catch(() => {});
+  // Record foreground/background moves so a silent gap in the log can be
+  // told apart from the user simply leaving the app.
+  try {
+    AppState.addEventListener('change', (state) => log('app', `app state: ${state}`));
+  } catch {
+    // unavailable in some headless contexts
+  }
+  // A frozen JS thread (big synchronous read, GC storm) shows up as missed
+  // timer ticks. OS-suspended timers land here too — read these lines
+  // alongside the app-state ones.
+  let lastTick = Date.now();
+  setInterval(() => {
+    const now = Date.now();
+    const stall = now - lastTick - 1000;
+    if (stall > 2000) log('app', `js thread stalled ~${(stall / 1000).toFixed(1)}s`);
+    lastTick = now;
+  }, 1000);
   const errorUtils = (globalThis as { ErrorUtils?: any }).ErrorUtils;
   if (errorUtils?.setGlobalHandler) {
     const prev = errorUtils.getGlobalHandler?.();

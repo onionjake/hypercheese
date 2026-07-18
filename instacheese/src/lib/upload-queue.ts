@@ -507,10 +507,14 @@ function setCurrent(item: QueueItem, phase: QueueCurrent['phase']): void {
     bytesSent: 0,
     bytesTotal: item.size ?? 0,
   };
+  lastProgressLog = Date.now();
   broadcastSummary();
 }
 
 let lastProgressBroadcast = 0;
+// Heartbeat for transfers longer than ~10s: a process death mid-upload is
+// otherwise a silent gap in the log as long as the whole transfer.
+let lastProgressLog = 0;
 function onUploadProgress(bytesSent: number, bytesTotal: number): void {
   if (!current) return;
   current.bytesSent = bytesSent;
@@ -519,6 +523,10 @@ function onUploadProgress(bytesSent: number, bytesTotal: number): void {
   if (now - lastProgressBroadcast >= 300) {
     lastProgressBroadcast = now;
     broadcastSummary();
+  }
+  if (now - lastProgressLog >= 10_000) {
+    lastProgressLog = now;
+    log('upload', `progress ${current.filename}: ${bytesSent}/${bytesTotal} bytes`);
   }
 }
 
