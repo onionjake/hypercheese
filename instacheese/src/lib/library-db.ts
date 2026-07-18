@@ -20,12 +20,15 @@ export interface LibraryAsset {
   size: number | null; // bytes, resolved lazily on first sync
   supported: boolean;
   selected: boolean;
+  excluded: boolean; // user decided this asset won't be uploaded
   status: AssetStatus;
   error: string | null;
   creationTime: number;
 }
 
-export type AssetFilter = 'all' | 'selected' | 'synced' | 'failed';
+// 'unmarked' is the triage view: supported assets the user hasn't decided on
+// yet — not selected, not backed up, not marked "won't upload".
+export type AssetFilter = 'unmarked' | 'all' | 'selected' | 'synced' | 'failed' | 'excluded';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -44,6 +47,7 @@ async function openDb(): Promise<SQLite.SQLiteDatabase> {
           size INTEGER,
           supported INTEGER NOT NULL DEFAULT 1,
           selected INTEGER NOT NULL DEFAULT 0,
+          excluded INTEGER NOT NULL DEFAULT 0,
           status TEXT NOT NULL DEFAULT 'none',
           error TEXT,
           creation_time INTEGER NOT NULL DEFAULT 0,
@@ -53,6 +57,11 @@ async function openDb(): Promise<SQLite.SQLiteDatabase> {
         CREATE INDEX IF NOT EXISTS idx_assets_selected ON assets (selected);
         CREATE INDEX IF NOT EXISTS idx_assets_status ON assets (status);
       `);
+      // Catalogs created before the "won't upload" feature lack the column.
+      const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(assets)');
+      if (!cols.some((c) => c.name === 'excluded')) {
+        await db.execAsync('ALTER TABLE assets ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0');
+      }
       return db;
     })();
   }
@@ -69,6 +78,7 @@ function rowToAsset(row: any): LibraryAsset {
     size: row.size,
     supported: !!row.supported,
     selected: !!row.selected,
+    excluded: !!row.excluded,
     status: row.status as AssetStatus,
     error: row.error,
     creationTime: row.creation_time,
@@ -142,11 +152,15 @@ export async function refreshFromLibrary(
   await db.runAsync('DELETE FROM assets WHERE last_seen != ?', generation);
 }
 
+const UNMARKED_WHERE = "supported = 1 AND excluded = 0 AND selected = 0 AND status != 'synced'";
+
 const FILTER_WHERE: Record<AssetFilter, string> = {
+  unmarked: UNMARKED_WHERE,
   all: '1 = 1',
   selected: 'selected = 1',
   synced: "status = 'synced'",
   failed: "status = 'failed'",
+  excluded: 'excluded = 1',
 };
 
 export async function listAssets(
@@ -166,9 +180,11 @@ export async function listAssets(
 
 export interface LibraryCounts {
   total: number;
+  unmarked: number; // no decision made yet (see UNMARKED_WHERE)
   selected: number;
   synced: number;
   failed: number;
+  excluded: number; // marked "won't upload"
   pending: number; // selected but not yet backed up
 }
 
@@ -177,30 +193,36 @@ export async function libraryCounts(): Promise<LibraryCounts> {
   const row = await db.getFirstAsync<any>(`
     SELECT
       COUNT(*) AS total,
+      SUM(${UNMARKED_WHERE}) AS unmarked,
       SUM(selected) AS selected,
       SUM(status = 'synced') AS synced,
       SUM(status = 'failed') AS failed,
+      SUM(excluded) AS excluded,
       SUM(selected = 1 AND status IN ('pending', 'failed')) AS pending
     FROM assets
   `);
   return {
     total: row?.total ?? 0,
+    unmarked: row?.unmarked ?? 0,
     selected: row?.selected ?? 0,
     synced: row?.synced ?? 0,
     failed: row?.failed ?? 0,
+    excluded: row?.excluded ?? 0,
     pending: row?.pending ?? 0,
   };
 }
 
 // Selecting an asset queues it (unless the server already has it); deselecting
 // forgets any failure but keeps 'synced' — the server still has the file.
+// Selecting also clears "won't upload": marking for upload is the newer
+// decision, so the two states can never overlap.
 export async function setSelected(ids: string[], selected: boolean): Promise<void> {
   if (ids.length === 0) return;
   const db = await openDb();
   const placeholders = ids.map(() => '?').join(',');
   if (selected) {
     await db.runAsync(
-      `UPDATE assets SET selected = 1,
+      `UPDATE assets SET selected = 1, excluded = 0,
          status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'pending' END
        WHERE id IN (${placeholders})`,
       ...ids
@@ -215,19 +237,41 @@ export async function setSelected(ids: string[], selected: boolean): Promise<voi
   }
 }
 
+// "Select all" respects "won't upload" — those photos were explicitly opted
+// out, so a bulk select never drags them back in.
 export async function setAllSelected(selected: boolean): Promise<void> {
   const db = await openDb();
   if (selected) {
     await db.runAsync(`
       UPDATE assets SET selected = 1,
         status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'pending' END
-      WHERE supported = 1
+      WHERE supported = 1 AND excluded = 0
     `);
   } else {
     await db.runAsync(`
       UPDATE assets SET selected = 0, error = NULL,
         status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'none' END
     `);
+  }
+}
+
+// Marking "won't upload" is the opposite decision to selecting: it deselects,
+// forgets any failure, and keeps 'synced' (the server still has the file, we
+// just won't send it again if the server ever loses it). Un-marking returns
+// the asset to the unmarked pool without re-selecting it.
+export async function setExcluded(ids: string[], excluded: boolean): Promise<void> {
+  if (ids.length === 0) return;
+  const db = await openDb();
+  const placeholders = ids.map(() => '?').join(',');
+  if (excluded) {
+    await db.runAsync(
+      `UPDATE assets SET excluded = 1, selected = 0, error = NULL,
+         status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'none' END
+       WHERE id IN (${placeholders})`,
+      ...ids
+    );
+  } else {
+    await db.runAsync(`UPDATE assets SET excluded = 0 WHERE id IN (${placeholders})`, ...ids);
   }
 }
 

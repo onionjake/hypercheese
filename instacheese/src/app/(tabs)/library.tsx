@@ -6,6 +6,7 @@ import {
   Alert,
   FlatList,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -18,6 +19,7 @@ import {
   listAssets,
   refreshFromLibrary,
   setAllSelected,
+  setExcluded,
   setSelected,
   type AssetFilter,
   type LibraryAsset,
@@ -33,19 +35,27 @@ import * as queue from '@/lib/upload-queue';
 
 const PAGE = 120;
 
+// 'unmarked' is the default triage view: only photos with no decision yet, so
+// each asset needs a look exactly once. Long-press → "Won't upload" removes a
+// photo from it permanently; the "Won't upload" chip finds those again.
 const FILTERS: { key: AssetFilter; label: string }[] = [
+  { key: 'unmarked', label: 'Unmarked' },
   { key: 'all', label: 'All' },
   { key: 'selected', label: 'Selected' },
   { key: 'synced', label: 'Backed up' },
   { key: 'failed', label: 'Failed' },
+  { key: 'excluded', label: "Won't upload" },
 ];
+
+const countFor = (counts: LibraryCounts, key: AssetFilter): number =>
+  key === 'all' ? counts.total : counts[key];
 
 export default function LibraryScreen() {
   const { session, user } = useAuth();
   const palette = usePalette();
 
   const [assets, setAssets] = useState<LibraryAsset[]>([]);
-  const [filter, setFilter] = useState<AssetFilter>('all');
+  const [filter, setFilter] = useState<AssetFilter>('unmarked');
   const [counts, setCounts] = useState<LibraryCounts | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanCount, setScanCount] = useState(0);
@@ -149,6 +159,25 @@ export default function LibraryScreen() {
 
   const toggle = async (asset: LibraryAsset) => {
     if (!asset.supported) return;
+    // Tapping a "won't upload" photo is the change-of-mind path: it goes
+    // straight to marked-for-upload.
+    if (asset.excluded) {
+      await setSelected([asset.id], true);
+      setAssets((prev) =>
+        prev.map((a) =>
+          a.id === asset.id
+            ? {
+                ...a,
+                excluded: false,
+                selected: true,
+                status: a.status === 'synced' ? 'synced' : 'pending',
+              }
+            : a
+        )
+      );
+      refreshCounts();
+      return;
+    }
     const selected = !asset.selected;
     await setSelected([asset.id], selected);
     // Un-checking also pulls the photo back out of the upload queue (unless
@@ -192,18 +221,54 @@ export default function LibraryScreen() {
     refreshCounts();
   };
 
+  // Marking "won't upload" also pulls the photo out of the upload queue, same
+  // as un-checking it would.
+  const markWontUpload = async (asset: LibraryAsset) => {
+    await setExcluded([asset.id], true);
+    await queue.removeQueued([queue.assetKey(asset.id)], 'backup');
+    setAssets((prev) =>
+      prev.map((a) =>
+        a.id === asset.id
+          ? {
+              ...a,
+              excluded: true,
+              selected: false,
+              error: null,
+              status: a.status === 'synced' ? 'synced' : 'none',
+            }
+          : a
+      )
+    );
+    refreshCounts();
+  };
+
   const showDetails = (item: LibraryAsset) => {
     const lines = [
-      item.status === 'synced'
-        ? 'Backed up'
-        : item.status === 'failed'
-          ? 'Last attempt failed'
-          : item.selected
-            ? 'Marked for backup — not uploaded yet'
-            : 'Not marked for backup',
+      item.excluded
+        ? "Marked won't upload"
+        : item.status === 'synced'
+          ? 'Backed up'
+          : item.status === 'failed'
+            ? 'Last attempt failed'
+            : item.selected
+              ? 'Marked for backup — not uploaded yet'
+              : 'Not marked for backup',
     ];
     if (item.error) lines.push(`\n${item.error}`);
-    Alert.alert(item.filename, lines.join('\n'));
+    const buttons: Parameters<typeof Alert.alert>[2] = [];
+    if (item.supported) {
+      if (item.excluded) {
+        buttons.push({ text: 'Mark for upload', onPress: () => toggle(item) });
+      } else if (item.status !== 'synced') {
+        buttons.push({
+          text: "Won't upload",
+          style: 'destructive',
+          onPress: () => markWontUpload(item),
+        });
+      }
+    }
+    buttons.push({ text: 'Close', style: 'cancel' });
+    Alert.alert(item.filename, lines.join('\n'), buttons);
   };
 
   const cell = ({ item }: { item: LibraryAsset }) => (
@@ -221,9 +286,17 @@ export default function LibraryScreen() {
         <>
           <View style={styles.selectBadge}>
             <Ionicons
-              name={item.selected ? 'checkmark-circle' : 'ellipse-outline'}
+              name={
+                item.excluded
+                  ? 'close-circle'
+                  : item.selected
+                    ? 'checkmark-circle'
+                    : 'ellipse-outline'
+              }
               size={22}
-              color={item.selected ? accent : 'rgba(255,255,255,0.9)'}
+              color={
+                item.excluded ? 'rgba(255,255,255,0.65)' : item.selected ? accent : 'rgba(255,255,255,0.9)'
+              }
             />
           </View>
           {item.status !== 'none' ? (
@@ -270,33 +343,25 @@ export default function LibraryScreen() {
         </View>
       ) : (
         <>
-          <View style={[styles.chips, { borderColor: palette.border }]}>
-            {FILTERS.map(({ key, label }) => (
-              <Pressable
-                key={key}
-                onPress={() => changeFilter(key)}
-                style={[
-                  styles.chip,
-                  { borderColor: filter === key ? accent : palette.border },
-                  filter === key && { backgroundColor: `${accent}22` },
-                ]}
-              >
-                <Text style={{ color: filter === key ? accent : palette.subtleText, fontSize: 13 }}>
-                  {label}
-                  {counts
-                    ? ` ${
-                        key === 'all'
-                          ? counts.total
-                          : key === 'selected'
-                            ? counts.selected
-                            : key === 'synced'
-                              ? counts.synced
-                              : counts.failed
-                      }`
-                    : ''}
-                </Text>
-              </Pressable>
-            ))}
+          <View style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderColor: palette.border }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+              {FILTERS.map(({ key, label }) => (
+                <Pressable
+                  key={key}
+                  onPress={() => changeFilter(key)}
+                  style={[
+                    styles.chip,
+                    { borderColor: filter === key ? accent : palette.border },
+                    filter === key && { backgroundColor: `${accent}22` },
+                  ]}
+                >
+                  <Text style={{ color: filter === key ? accent : palette.subtleText, fontSize: 13 }}>
+                    {label}
+                    {counts ? ` ${countFor(counts, key)}` : ''}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
           </View>
 
           <FlatList
@@ -316,7 +381,10 @@ export default function LibraryScreen() {
                   </Text>
                 ) : (
                   <Text style={{ color: palette.subtleText, textAlign: 'center', padding: 24 }}>
-                    {loadError ?? 'No photos here yet.'}
+                    {loadError ??
+                      (filter === 'unmarked'
+                        ? 'All caught up — every photo has been marked, backed up, or skipped.'
+                        : 'No photos here yet.')}
                   </Text>
                 )}
               </View>
@@ -420,7 +488,6 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   chip: {
     borderWidth: 1,
