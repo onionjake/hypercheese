@@ -4,7 +4,7 @@ import * as SQLite from 'expo-sqlite';
 import { AppState } from 'react-native';
 
 import { type Session } from './api';
-import { libraryCounts, markStatus, selectedForSync, setSize } from './library-db';
+import { libraryCounts, markStatus, markedForSync, setSize } from './library-db';
 import { log, logError } from './log';
 import { onNetworkChange, uploadAllowed } from './network';
 import { hashAndUpload, manifestCheck, stablePath } from './upload-protocol';
@@ -350,7 +350,7 @@ export function enqueue(items: NewQueueItem[]): Promise<number> {
 export async function enqueueBackupPending(
   opts: { includeSynced?: boolean } = {}
 ): Promise<number> {
-  const assets = await selectedForSync();
+  const assets = await markedForSync();
   const pending = opts.includeSynced ? assets : assets.filter((a) => a.status !== 'synced');
   return enqueue(
     pending.map((a) => ({

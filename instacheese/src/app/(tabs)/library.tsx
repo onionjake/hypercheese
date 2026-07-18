@@ -18,6 +18,8 @@ import {
   excludeSelected,
   libraryCounts,
   listAssets,
+  markForUpload,
+  markSelectedForUpload,
   refreshFromLibrary,
   setAllSelected,
   setExcluded,
@@ -30,9 +32,12 @@ import { accent, usePalette } from '@/lib/theme';
 import * as queue from '@/lib/upload-queue';
 
 // Backup: a browsable catalog of the camera roll where each photo can be
-// included in or excluded from backup, with per-photo sync status. Hitting
-// "Back up" hands the selection to the shared upload queue — keep selecting,
-// switch screens, or close the app; the queue keeps draining.
+// included in or excluded from backup, with per-photo sync status. The
+// checkboxes are a working set: stage a batch, then commit it with "Back up"
+// or "Won't upload" — either action consumes the selection so the next batch
+// can be staged. "Back up" hands the batch to the shared upload queue; keep
+// selecting, switch screens, or close the app and the queue keeps draining,
+// with the per-photo cloud badge tracking real upload state throughout.
 
 const PAGE = 120;
 
@@ -158,68 +163,38 @@ export default function LibraryScreen() {
     loadPage(true, next);
   };
 
+  // Tapping only toggles working-set membership — the decision happens when a
+  // batch action (Back up / Won't upload) commits the selection.
   const toggle = async (asset: LibraryAsset) => {
     if (!asset.supported) return;
-    // Tapping a "won't upload" photo is the change-of-mind path: it goes
-    // straight to marked-for-upload.
-    if (asset.excluded) {
-      await setSelected([asset.id], true);
-      setAssets((prev) =>
-        prev.map((a) =>
-          a.id === asset.id
-            ? {
-                ...a,
-                excluded: false,
-                selected: true,
-                status: a.status === 'synced' ? 'synced' : 'pending',
-              }
-            : a
-        )
-      );
-      refreshCounts();
-      return;
-    }
     const selected = !asset.selected;
     await setSelected([asset.id], selected);
-    // Un-checking also pulls the photo back out of the upload queue (unless
-    // it's the one mid-upload right now). Scoped to backup-queued items so it
-    // can't cancel an upload the picker or a full sync queued independently.
-    if (!selected) await queue.removeQueued([queue.assetKey(asset.id)], 'backup');
-    setAssets((prev) =>
-      prev.map((a) =>
-        a.id === asset.id
-          ? {
-              ...a,
-              selected,
-              error: selected ? a.error : null,
-              status:
-                a.status === 'synced' ? 'synced' : selected ? 'pending' : 'none',
-            }
-          : a
-      )
-    );
+    setAssets((prev) => prev.map((a) => (a.id === asset.id ? { ...a, selected } : a)));
     refreshCounts();
   };
 
-  // Clearing the checkboxes is just a selection reset for picking the next
-  // batch — anything already handed to the queue by "Back up" keeps
-  // uploading. Un-check an individual photo (or use the queue screen) to
-  // cancel a queued upload.
+  // Clearing the checkboxes is just a selection reset for staging the next
+  // batch — it never touches sync state, so anything already marked for
+  // upload keeps its cloud badge and keeps uploading. Mark a photo "won't
+  // upload" (or use the queue screen) to cancel a queued upload.
   const selectAll = async (selected: boolean) => {
     await setAllSelected(selected);
     await loadPage(true, filter);
     await refreshCounts();
   };
 
-  // Queue everything marked for backup and let the shared queue drain it.
-  // Works mid-run too, so newly selected photos can be added anytime.
-  // includeSynced re-checks locally-'synced' photos against the server
-  // manifest, so a manual backup notices if the server ever lost a file.
+  // Commit the selection as marked-for-upload, hand everything awaiting
+  // upload to the shared queue, and clear the checkboxes so the next batch
+  // can be staged. Works mid-run too. includeSynced re-checks locally-
+  // 'synced' photos against the server manifest, so a manual backup notices
+  // if the server ever lost a file.
   const begin = async () => {
     if (!session) return;
+    await markSelectedForUpload();
     await queue.enqueueBackupPending({ includeSynced: true });
     queue.kick('backup');
-    refreshCounts();
+    await loadPage(true, filter);
+    await refreshCounts();
   };
 
   // Marking "won't upload" also pulls the photo out of the upload queue, same
@@ -269,6 +244,28 @@ export default function LibraryScreen() {
     );
   };
 
+  // Direct change of mind from the detail dialog: mark for upload and start
+  // uploading right away, without a trip through the selection.
+  const markForUploadNow = async (asset: LibraryAsset) => {
+    await markForUpload([asset.id]);
+    await queue.enqueueBackupPending();
+    queue.kick('backup');
+    setAssets((prev) =>
+      prev.map((a) =>
+        a.id === asset.id
+          ? {
+              ...a,
+              excluded: false,
+              selected: false,
+              error: null,
+              status: a.status === 'synced' ? 'synced' : 'pending',
+            }
+          : a
+      )
+    );
+    refreshCounts();
+  };
+
   const showDetails = (item: LibraryAsset) => {
     const lines = [
       item.excluded
@@ -277,15 +274,17 @@ export default function LibraryScreen() {
           ? 'Backed up'
           : item.status === 'failed'
             ? 'Last attempt failed'
-            : item.selected
+            : item.status === 'pending'
               ? 'Marked for backup — not uploaded yet'
-              : 'Not marked for backup',
+              : item.selected
+                ? 'Selected — Back up or Won’t upload will decide'
+                : 'Not marked for backup',
     ];
     if (item.error) lines.push(`\n${item.error}`);
     const buttons: Parameters<typeof Alert.alert>[2] = [];
     if (item.supported) {
       if (item.excluded) {
-        buttons.push({ text: 'Mark for upload', onPress: () => toggle(item) });
+        buttons.push({ text: 'Mark for upload', onPress: () => markForUploadNow(item) });
       } else if (item.status !== 'synced') {
         buttons.push({
           text: "Won't upload",
@@ -314,15 +313,15 @@ export default function LibraryScreen() {
           <View style={styles.selectBadge}>
             <Ionicons
               name={
-                item.excluded
-                  ? 'close-circle'
-                  : item.selected
-                    ? 'checkmark-circle'
+                item.selected
+                  ? 'checkmark-circle'
+                  : item.excluded
+                    ? 'close-circle'
                     : 'ellipse-outline'
               }
               size={22}
               color={
-                item.excluded ? 'rgba(255,255,255,0.65)' : item.selected ? accent : 'rgba(255,255,255,0.9)'
+                item.selected ? accent : item.excluded ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.9)'
               }
             />
           </View>
@@ -478,18 +477,18 @@ export default function LibraryScreen() {
                 <Text style={[styles.buttonText, { color: '#ED4956' }]}>Won&apos;t upload</Text>
               </Pressable>
             ) : null}
-            {(counts?.pending ?? 0) > 0 || !running ? (
+            {(counts?.backupReady ?? 0) > 0 || !running ? (
               <Pressable
                 style={[
                   styles.button,
                   { backgroundColor: accent },
-                  (counts?.pending ?? 0) === 0 && { opacity: 0.5 },
+                  (counts?.backupReady ?? 0) === 0 && { opacity: 0.5 },
                 ]}
                 onPress={begin}
-                disabled={(counts?.pending ?? 0) === 0}
+                disabled={(counts?.backupReady ?? 0) === 0}
               >
                 <Text style={[styles.buttonText, { color: '#fff' }]}>
-                  {`Back up ${counts?.pending || ''}`}
+                  {`Back up ${counts?.backupReady || ''}`}
                 </Text>
               </Pressable>
             ) : (

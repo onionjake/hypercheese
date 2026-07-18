@@ -27,7 +27,9 @@ export interface LibraryAsset {
 }
 
 // 'unmarked' is the triage view: supported assets the user hasn't decided on
-// yet — not selected, not backed up, not marked "won't upload".
+// yet — not marked for upload, not backed up, not marked "won't upload".
+// (A checked-but-undecided photo still counts as unmarked; the selection is
+// only a working set until a batch action commits it.)
 export type AssetFilter = 'unmarked' | 'all' | 'selected' | 'synced' | 'failed' | 'excluded';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
@@ -129,7 +131,8 @@ export async function refreshFromLibrary(
              size = CASE WHEN assets.mtime != excluded.mtime THEN NULL ELSE assets.size END,
              error = CASE WHEN assets.mtime != excluded.mtime THEN NULL ELSE assets.error END,
              status = CASE
-               WHEN assets.mtime != excluded.mtime AND assets.selected = 1 THEN 'pending'
+               WHEN assets.mtime != excluded.mtime AND assets.excluded = 0
+                 AND assets.status IN ('pending', 'failed', 'synced') THEN 'pending'
                WHEN assets.mtime != excluded.mtime THEN 'none'
                ELSE assets.status END,
              mtime = excluded.mtime`,
@@ -152,7 +155,7 @@ export async function refreshFromLibrary(
   await db.runAsync('DELETE FROM assets WHERE last_seen != ?', generation);
 }
 
-const UNMARKED_WHERE = "supported = 1 AND excluded = 0 AND selected = 0 AND status != 'synced'";
+const UNMARKED_WHERE = "supported = 1 AND excluded = 0 AND status = 'none'";
 
 const FILTER_WHERE: Record<AssetFilter, string> = {
   unmarked: UNMARKED_WHERE,
@@ -185,7 +188,8 @@ export interface LibraryCounts {
   synced: number;
   failed: number;
   excluded: number; // marked "won't upload"
-  pending: number; // selected but not yet backed up
+  pending: number; // marked for upload but not yet backed up
+  backupReady: number; // what "Back up" would commit: staged selection + pending
 }
 
 export async function libraryCounts(): Promise<LibraryCounts> {
@@ -198,7 +202,8 @@ export async function libraryCounts(): Promise<LibraryCounts> {
       SUM(status = 'synced') AS synced,
       SUM(status = 'failed') AS failed,
       SUM(excluded) AS excluded,
-      SUM(selected = 1 AND status IN ('pending', 'failed')) AS pending
+      SUM(supported = 1 AND excluded = 0 AND status IN ('pending', 'failed')) AS pending,
+      SUM(supported = 1 AND (selected = 1 OR (excluded = 0 AND status IN ('pending', 'failed')))) AS backup_ready
     FROM assets
   `);
   return {
@@ -209,50 +214,59 @@ export async function libraryCounts(): Promise<LibraryCounts> {
     failed: row?.failed ?? 0,
     excluded: row?.excluded ?? 0,
     pending: row?.pending ?? 0,
+    backupReady: row?.backup_ready ?? 0,
   };
 }
 
-// Selecting an asset queues it (unless the server already has it); deselecting
-// forgets any failure but keeps 'synced' — the server still has the file.
-// Selecting also clears "won't upload": marking for upload is the newer
-// decision, so the two states can never overlap.
+// The selection is a transient working set: checking boxes stages photos for
+// a batch action (Back up / Won't upload) and never changes sync state, so
+// clearing it can't hide which photos are queued or awaiting upload.
 export async function setSelected(ids: string[], selected: boolean): Promise<void> {
   if (ids.length === 0) return;
   const db = await openDb();
   const placeholders = ids.map(() => '?').join(',');
-  if (selected) {
-    await db.runAsync(
-      `UPDATE assets SET selected = 1, excluded = 0,
-         status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'pending' END
-       WHERE id IN (${placeholders})`,
-      ...ids
-    );
-  } else {
-    await db.runAsync(
-      `UPDATE assets SET selected = 0, error = NULL,
-         status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'none' END
-       WHERE id IN (${placeholders})`,
-      ...ids
-    );
-  }
+  await db.runAsync(
+    `UPDATE assets SET selected = ? WHERE id IN (${placeholders})`,
+    selected ? 1 : 0,
+    ...ids
+  );
 }
 
 // "Select all" respects "won't upload" — those photos were explicitly opted
-// out, so a bulk select never drags them back in.
+// out, so a bulk select never drags them back in. (Tapping an individual
+// excluded photo can still select it deliberately.)
 export async function setAllSelected(selected: boolean): Promise<void> {
   const db = await openDb();
   if (selected) {
-    await db.runAsync(`
-      UPDATE assets SET selected = 1,
-        status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'pending' END
-      WHERE supported = 1 AND excluded = 0
-    `);
+    await db.runAsync('UPDATE assets SET selected = 1 WHERE supported = 1 AND excluded = 0');
   } else {
-    await db.runAsync(`
-      UPDATE assets SET selected = 0, error = NULL,
-        status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'none' END
-    `);
+    await db.runAsync('UPDATE assets SET selected = 0');
   }
+}
+
+const MARK_FOR_UPLOAD_SET = `
+  SET selected = 0, excluded = 0, error = NULL,
+      status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'pending' END`;
+
+// "Back up" commits the working selection: every checked photo becomes
+// durably marked for upload (status 'pending' until the queue settles it) and
+// the checkboxes clear so the next batch can be staged. Marking for upload
+// overrides "won't upload" — it's the newer decision.
+export async function markSelectedForUpload(): Promise<void> {
+  const db = await openDb();
+  await db.runAsync(`UPDATE assets ${MARK_FOR_UPLOAD_SET} WHERE selected = 1 AND supported = 1`);
+}
+
+// Single-photo change of mind, e.g. "Mark for upload" on a "won't upload"
+// photo's detail dialog.
+export async function markForUpload(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const db = await openDb();
+  const placeholders = ids.map(() => '?').join(',');
+  await db.runAsync(
+    `UPDATE assets ${MARK_FOR_UPLOAD_SET} WHERE id IN (${placeholders}) AND supported = 1`,
+    ...ids
+  );
 }
 
 // Marking "won't upload" is the opposite decision to selecting: it deselects,
@@ -303,11 +317,15 @@ export async function setSize(id: string, size: number): Promise<void> {
   await db.runAsync('UPDATE assets SET size = ? WHERE id = ?', size, id);
 }
 
-// Everything the user wants on the server, in the order we'll sync it.
-export async function selectedForSync(): Promise<LibraryAsset[]> {
+// Everything the user wants on the server, in the order we'll sync it. Keyed
+// off the durable upload decision (status), not the transient checkbox
+// selection, so handed-off uploads survive Clear selection and auto-retries
+// keep retrying failures after the checkboxes are gone.
+export async function markedForSync(): Promise<LibraryAsset[]> {
   const db = await openDb();
   const rows = await db.getAllAsync(
-    `SELECT * FROM assets WHERE selected = 1 AND supported = 1
+    `SELECT * FROM assets
+     WHERE supported = 1 AND excluded = 0 AND status IN ('pending', 'failed', 'synced')
      ORDER BY creation_time DESC, id DESC`
   );
   return rows.map(rowToAsset);
