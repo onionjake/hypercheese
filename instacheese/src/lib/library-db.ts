@@ -275,6 +275,20 @@ export async function setExcluded(ids: string[], excluded: boolean): Promise<voi
   }
 }
 
+// Bulk form of setExcluded(..., true) for the whole current selection — one
+// UPDATE instead of an id list that could blow past SQLite's bind limit.
+// Returns the affected ids so the caller can pull them from the upload queue.
+export async function excludeSelected(): Promise<string[]> {
+  const db = await openDb();
+  const rows = await db.getAllAsync<{ id: string }>('SELECT id FROM assets WHERE selected = 1');
+  await db.runAsync(`
+    UPDATE assets SET excluded = 1, selected = 0, error = NULL,
+      status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'none' END
+    WHERE selected = 1
+  `);
+  return rows.map((r) => r.id);
+}
+
 export async function markStatus(
   id: string,
   status: AssetStatus,

@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/lib/auth';
 import {
+  excludeSelected,
   libraryCounts,
   listAssets,
   refreshFromLibrary,
@@ -242,6 +243,32 @@ export default function LibraryScreen() {
     refreshCounts();
   };
 
+  // Bulk "won't upload" for the whole current selection — select a batch by
+  // tapping (or Select all), then write them all off in one go. Confirmed
+  // first because it consumes the selection; the Won't upload filter is the
+  // undo path.
+  const wontUploadSelected = () => {
+    const n = counts?.selected ?? 0;
+    if (n === 0) return;
+    Alert.alert(
+      "Won't upload",
+      `Mark ${n} selected photo${n === 1 ? '' : 's'} as won't upload? They won't be backed up and will disappear from Unmarked.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: "Won't upload",
+          style: 'destructive',
+          onPress: async () => {
+            const ids = await excludeSelected();
+            await queue.removeQueued(ids.map(queue.assetKey), 'backup');
+            await loadPage(true, filter);
+            await refreshCounts();
+          },
+        },
+      ]
+    );
+  };
+
   const showDetails = (item: LibraryAsset) => {
     const lines = [
       item.excluded
@@ -442,6 +469,15 @@ export default function LibraryScreen() {
                 {(counts?.selected ?? 0) === 0 ? 'Select all' : 'Clear selection'}
               </Text>
             </Pressable>
+            {(counts?.selected ?? 0) > 0 ? (
+              <Pressable
+                style={[styles.button, styles.secondaryButton, { borderColor: '#ED4956' }]}
+                onPress={wontUploadSelected}
+                disabled={scanning}
+              >
+                <Text style={[styles.buttonText, { color: '#ED4956' }]}>Won&apos;t upload</Text>
+              </Pressable>
+            ) : null}
             {(counts?.pending ?? 0) > 0 || !running ? (
               <Pressable
                 style={[
