@@ -28,6 +28,7 @@ import {
   type LibraryAsset,
   type LibraryCounts,
 } from '@/lib/library-db';
+import { flushLogs, log } from '@/lib/log';
 import { accent, usePalette } from '@/lib/theme';
 import * as queue from '@/lib/upload-queue';
 
@@ -185,13 +186,17 @@ export default function LibraryScreen() {
 
   // Commit the selection as marked-for-upload, hand everything awaiting
   // upload to the shared queue, and clear the checkboxes so the next batch
-  // can be staged. Works mid-run too. includeSynced re-checks locally-
-  // 'synced' photos against the server manifest, so a manual backup notices
-  // if the server ever lost a file.
+  // can be staged. Works mid-run too. Deliberately NOT includeSynced: that
+  // re-queues the entire ever-growing synced history for manifest
+  // re-verification on every press, which is a full sync's job (the Sync
+  // screen re-checks the whole library against the server) — a routine
+  // batch commit must stay proportional to what's awaiting upload.
   const begin = async () => {
     if (!session) return;
+    log('backup', `Back up pressed (${counts?.backupReady ?? '?'} ready)`);
+    await flushLogs().catch(() => {});
     await markSelectedForUpload();
-    await queue.enqueueBackupPending({ includeSynced: true });
+    await queue.enqueueBackupPending();
     queue.kick('backup');
     await loadPage(true, filter);
     await refreshCounts();

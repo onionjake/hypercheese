@@ -5,7 +5,7 @@ import { AppState } from 'react-native';
 
 import { type Session } from './api';
 import { libraryCounts, markStatus, markedForSync, setSize } from './library-db';
-import { log, logError } from './log';
+import { flushLogs, log, logError } from './log';
 import { onNetworkChange, uploadAllowed } from './network';
 import { hashAndUpload, manifestCheck, stablePath } from './upload-protocol';
 
@@ -284,11 +284,16 @@ export function enqueue(items: NewQueueItem[]): Promise<number> {
     const toQueue = accepted.filter((i) => !isFreshlyFinished(i));
     const skipped = accepted.filter(isFreshlyFinished);
 
+    // One multi-row upsert per chunk instead of one statement per item — a
+    // large batch (a big backup commit or first sync) is thousands of rows,
+    // and per-row round trips through the async bridge starve the event loop
+    // for the whole transaction.
     await db.withTransactionAsync(async () => {
-      for (const item of toQueue) {
+      for (const rows of chunk(toQueue, 200)) {
+        const values = rows.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', NULL, ?, ?)").join(', ');
         await db.runAsync(
           `INSERT INTO uploads (key, source, asset_id, local_uri, thumb_uri, filename, path, mtime, size, status, error, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', NULL, ?, ?)
+           VALUES ${values}
            ON CONFLICT(key) DO UPDATE SET
              source = excluded.source,
              asset_id = excluded.asset_id,
@@ -301,23 +306,33 @@ export function enqueue(items: NewQueueItem[]): Promise<number> {
              status = 'queued',
              error = NULL,
              updated_at = excluded.updated_at`,
-          item.key,
-          item.source,
-          item.assetId ?? null,
-          item.localUri ?? null,
-          item.thumbUri ?? null,
-          item.filename,
-          item.path,
-          item.mtime,
-          item.size ?? null,
-          now,
-          now
+          ...rows.flatMap((item) => [
+            item.key,
+            item.source,
+            item.assetId ?? null,
+            item.localUri ?? null,
+            item.thumbUri ?? null,
+            item.filename,
+            item.path,
+            item.mtime,
+            item.size ?? null,
+            now,
+            now,
+          ])
         );
       }
     });
 
+    // Fanning an event out to every screen per item is the other per-item
+    // cost; yield to the event loop periodically so a big batch can't jam JS
+    // (frozen UI, stalled upload callbacks) for the whole loop.
+    let emitted = 0;
+    const emitYielding = async (item: QueueItem) => {
+      emitItem(item);
+      if (++emitted % 200 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+    };
     for (const item of toQueue) {
-      emitItem({
+      await emitYielding({
         key: item.key,
         source: item.source,
         assetId: item.assetId ?? null,
@@ -334,7 +349,7 @@ export function enqueue(items: NewQueueItem[]): Promise<number> {
     // Screens that just (re-)enqueued a finished item still hear its real
     // status, e.g. a re-picked photo shows "Already uploaded" immediately.
     for (const item of skipped) {
-      emitItem(rowToItem(existing.get(item.key)));
+      await emitYielding(rowToItem(existing.get(item.key)));
     }
     await refreshAndBroadcast();
     return toQueue.filter((i) => !wasActive(i.key)).length;
@@ -343,17 +358,23 @@ export function enqueue(items: NewQueueItem[]): Promise<number> {
 
 // Everything marked for backup in the library catalog that isn't known to be
 // on the server yet. With includeSynced, locally-'synced' assets are queued
-// too — the server manifest re-verifies them for free, which is how a manual
-// "Back up" notices server-side data loss or a device re-registration (the
-// local 'synced' status is only a display cache). Auto-retries skip them to
-// stay cheap.
+// too — the server manifest re-verifies them for free, which notices
+// server-side data loss or a device re-registration (the local 'synced'
+// status is only a display cache). That set grows with the whole backed-up
+// history, so only deliberate re-verification flows should pass it — routine
+// "Back up" presses and auto-retries must stay O(pending).
 export async function enqueueBackupPending(
   opts: { includeSynced?: boolean } = {}
 ): Promise<number> {
-  const assets = await markedForSync();
-  const pending = opts.includeSynced ? assets : assets.filter((a) => a.status !== 'synced');
-  return enqueue(
-    pending.map((a) => ({
+  const started = Date.now();
+  const assets = await markedForSync(opts);
+  if (assets.length === 0) return 0;
+  // Persist this line before the enqueue: if the process dies in there, the
+  // debounced flush never runs and the log would go silent with no trace.
+  log('queue', `enqueueing ${assets.length} backup candidates`);
+  await flushLogs().catch(() => {});
+  const queued = await enqueue(
+    assets.map((a) => ({
       key: assetKey(a.id),
       source: 'backup' as const,
       assetId: a.id,
@@ -364,6 +385,8 @@ export async function enqueueBackupPending(
       size: a.size,
     }))
   );
+  log('queue', `backup enqueue done: ${queued} newly queued (${Date.now() - started}ms)`);
+  return queued;
 }
 
 // Drop items that haven't finished (or started uploading bytes) — used when a

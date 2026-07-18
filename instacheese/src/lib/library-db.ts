@@ -320,12 +320,18 @@ export async function setSize(id: string, size: number): Promise<void> {
 // Everything the user wants on the server, in the order we'll sync it. Keyed
 // off the durable upload decision (status), not the transient checkbox
 // selection, so handed-off uploads survive Clear selection and auto-retries
-// keep retrying failures after the checkboxes are gone.
-export async function markedForSync(): Promise<LibraryAsset[]> {
+// keep retrying failures after the checkboxes are gone. By default only
+// assets still awaiting upload are returned; includeSynced also returns the
+// (much larger, ever-growing) already-synced set, so only re-verification
+// flows should ask for it.
+export async function markedForSync(
+  opts: { includeSynced?: boolean } = {}
+): Promise<LibraryAsset[]> {
   const db = await openDb();
+  const statuses = opts.includeSynced ? "'pending', 'failed', 'synced'" : "'pending', 'failed'";
   const rows = await db.getAllAsync(
     `SELECT * FROM assets
-     WHERE supported = 1 AND excluded = 0 AND status IN ('pending', 'failed', 'synced')
+     WHERE supported = 1 AND excluded = 0 AND status IN (${statuses})
      ORDER BY creation_time DESC, id DESC`
   );
   return rows.map(rowToAsset);
