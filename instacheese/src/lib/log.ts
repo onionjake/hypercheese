@@ -15,6 +15,7 @@ let current = ''; // contents of the newest chunk
 let dirty = false;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let initPromise: Promise<void> | null = null;
+let generation = 0; // bumped by clearLogs so an in-flight flush discards itself
 
 function chunkUri(index: number): string {
   return `${LOG_DIR}log.${index}.txt`;
@@ -45,8 +46,9 @@ async function init(): Promise<void> {
 }
 
 async function flush(): Promise<void> {
+  const gen = generation;
   await init();
-  if (!dirty || chunkIndex === null) return;
+  if (gen !== generation || !dirty || chunkIndex === null) return;
   dirty = false;
   try {
     await LegacyFileSystem.writeAsStringAsync(chunkUri(chunkIndex), current);
@@ -87,6 +89,62 @@ export function logError(tag: string, message: string, err: unknown): void {
   const detail =
     err instanceof Error ? `${err.message}${err.stack ? `\n${err.stack}` : ''}` : String(err);
   log(tag, `${message}: ${detail}`);
+}
+
+// Write pending lines to disk immediately, skipping the debounce. Used when
+// the process may be about to die.
+export function flushLogs(): Promise<void> {
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  return flush();
+}
+
+// Delete all history so the next export contains only what happens after
+// this point (clear → reproduce the issue → export).
+export async function clearLogs(): Promise<void> {
+  await init();
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  dirty = false;
+  generation++;
+  const last = chunkIndex ?? 0;
+  for (let i = Math.max(0, last - MAX_CHUNKS + 1); i <= last; i++) {
+    await LegacyFileSystem.deleteAsync(chunkUri(i), { idempotent: true }).catch(() => {});
+  }
+  chunkIndex = 0;
+  current = '';
+  log('log', 'logs cleared');
+}
+
+// Record bundle startup and hook fatal errors / unhandled rejections into the
+// debug log. A crash previously left no trace — the log just went silent —
+// so flush before handing off to the default handler (which kills the app in
+// production). The startup line also makes restarts-after-crash visible:
+// silence followed by "started" reads as a process death.
+export function installCrashLogging(): void {
+  log('app', 'started (bundle loaded)');
+  const errorUtils = (globalThis as { ErrorUtils?: any }).ErrorUtils;
+  if (errorUtils?.setGlobalHandler) {
+    const prev = errorUtils.getGlobalHandler?.();
+    errorUtils.setGlobalHandler((err: unknown, isFatal?: boolean) => {
+      logError('crash', isFatal ? 'FATAL uncaught error' : 'uncaught error', err);
+      flushLogs().finally(() => prev?.(err, isFatal));
+    });
+  }
+  // In dev, LogBox already owns rejection tracking; don't fight it.
+  if (!__DEV__) {
+    const hermes = (globalThis as { HermesInternal?: any }).HermesInternal;
+    hermes?.enablePromiseRejectionTracker?.({
+      allRejections: true,
+      onUnhandled: (_id: number, err: unknown) => {
+        logError('crash', 'unhandled promise rejection', err);
+      },
+    });
+  }
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

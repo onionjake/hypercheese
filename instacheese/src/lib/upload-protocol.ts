@@ -210,7 +210,10 @@ export async function hashAndUpload(
   onPhase?: (phase: 'hashing' | 'uploading') => void,
   onProgress?: (bytesSent: number, bytesTotal: number) => void
 ): Promise<'uploaded' | 'deduped'> {
+  // Log the start of each phase, not just the outcome — a process death
+  // mid-transfer otherwise leaves no trace of which file (or phase) it died in.
   onPhase?.('hashing');
+  log('upload', `hashing ${file.path} (${file.size} bytes)`);
   const sha = await cachedSha256OfFile(file.cacheKey, file.localUri, file.size);
 
   const toUpload = await postJson<{ path: string }[]>(session, '/files/hashes', [
@@ -222,6 +225,7 @@ export async function hashAndUpload(
   }
 
   onPhase?.('uploading');
+  log('upload', `uploading ${file.path}`);
   const task = LegacyFileSystem.createUploadTask(
     `${session.baseUrl}/files/upload`,
     file.localUri,

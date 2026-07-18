@@ -1,3 +1,9 @@
+// Installed at bundle load (before anything renders, and also on headless
+// background task launches) so fatal runtime errors land in the debug log.
+import { installCrashLogging } from './src/lib/log';
+
+installCrashLogging();
+
 // Custom entry so the background upload task is defined at module scope
 // before anything renders. Android launches background tasks headlessly (no
 // React tree), so the TaskManager.defineTask call must not live inside a

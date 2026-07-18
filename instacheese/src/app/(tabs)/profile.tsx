@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/lib/auth';
-import { exportLogs, logError } from '@/lib/log';
+import { clearLogs, exportLogs, logError } from '@/lib/log';
 import { getSettings, updateSettings } from '@/lib/settings';
 import { accent, usePalette } from '@/lib/theme';
 
@@ -97,6 +97,26 @@ export default function ProfileScreen() {
     }
   };
 
+  // Clear → reproduce the issue → export gives a log containing only the
+  // incident, without days of unrelated history.
+  const confirmClearLogs = () => {
+    Alert.alert('Clear debug logs?', 'The next export will only contain activity from now on.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await clearLogs();
+          } catch (err) {
+            logError('logs', 'clear failed', err);
+            Alert.alert('Could not clear logs', String(err));
+          }
+        },
+      },
+    ]);
+  };
+
   const displayName = user?.name || user?.username || 'Family member';
   const initial = displayName.trim().charAt(0).toUpperCase() || '🧀';
 
@@ -152,6 +172,13 @@ export default function ProfileScreen() {
               Download compressed debug logs
             </Text>
           )}
+        </Pressable>
+
+        <Pressable
+          style={[styles.button, { borderColor: palette.border }]}
+          onPress={confirmClearLogs}
+        >
+          <Text style={{ color: palette.text, fontWeight: '600' }}>Clear debug logs</Text>
         </Pressable>
 
         <Pressable style={[styles.button, { borderColor: palette.border }]} onPress={signOut}>
