@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 
 import { loadStoredSession } from './auth';
 import { log, logError } from './log';
+import { refreshMarkReminderInBackground } from './mark-reminder';
 import * as queue from './upload-queue';
 
 // Periodic background drain of the upload queue, so photos queued for upload
@@ -31,6 +32,9 @@ TaskManager.defineTask(UPLOAD_TASK, async () => {
     // backup, then drain until done, paused (network), or the OS calls time.
     await queue.enqueueBackupPending();
     await queue.kick('background');
+    // Piggyback on the wakeup: freshen the catalog and keep the nightly
+    // mark reminder's count/schedule current while the app stays closed.
+    await refreshMarkReminderInBackground();
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch (err) {
     logError('bg', 'background drain failed', err);

@@ -29,6 +29,7 @@ import {
   type LibraryCounts,
 } from '@/lib/library-db';
 import { flushLogs, log } from '@/lib/log';
+import { refreshMarkReminder } from '@/lib/mark-reminder';
 import { accent, usePalette } from '@/lib/theme';
 import * as queue from '@/lib/upload-queue';
 
@@ -74,8 +75,13 @@ export default function LibraryScreen() {
   const canWrite = !!user?.can_write;
   const running = summary.state === 'running';
 
+  // Every path that can change the unmarked pool (scans, batch actions,
+  // queue settles) funnels through here, so this is also where the nightly
+  // mark reminder gets re-scheduled with the fresh count.
   const refreshCounts = useCallback(async () => {
-    setCounts(await libraryCounts());
+    const next = await libraryCounts();
+    setCounts(next);
+    refreshMarkReminder(next.unmarked);
   }, []);
 
   // Queue settles arrive per file; refresh the chip counts on a small

@@ -7,11 +7,18 @@ export interface Settings {
   // SAF directory the user granted for saving debug logs on Android, so the
   // folder picker only appears once.
   logDownloadDirUri: string | null;
+  // Nightly ~9pm notification when photos still need a Back up / Won't
+  // upload decision (see mark-reminder.ts).
+  nightlyMarkReminder: boolean;
+  // When the reminder's background library rescan last ran, for throttling.
+  reminderLastScan: number;
 }
 
 const DEFAULTS: Settings = {
   uploadOnCellular: false,
   logDownloadDirUri: null,
+  nightlyMarkReminder: true,
+  reminderLastScan: 0,
 };
 
 const SETTINGS_URI = `${LegacyFileSystem.documentDirectory}settings.json`;

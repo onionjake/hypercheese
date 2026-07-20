@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/lib/auth';
 import { clearLogs, exportLogs, logError } from '@/lib/log';
+import { cancelMarkReminder, registerMarkReminder } from '@/lib/mark-reminder';
 import { getSettings, updateSettings } from '@/lib/settings';
 import { accent, usePalette } from '@/lib/theme';
 
@@ -23,15 +24,28 @@ export default function ProfileScreen() {
   const { session, user, signOut } = useAuth();
   const palette = usePalette();
   const [uploadOnCellular, setUploadOnCellular] = useState(false);
+  const [nightlyReminder, setNightlyReminder] = useState(true);
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    getSettings().then((s) => setUploadOnCellular(s.uploadOnCellular));
+    getSettings().then((s) => {
+      setUploadOnCellular(s.uploadOnCellular);
+      setNightlyReminder(s.nightlyMarkReminder);
+    });
   }, []);
 
   const toggleCellular = async (value: boolean) => {
     setUploadOnCellular(value);
     await updateSettings({ uploadOnCellular: value });
+  };
+
+  const toggleNightlyReminder = async (value: boolean) => {
+    setNightlyReminder(value);
+    await updateSettings({ nightlyMarkReminder: value });
+    // Turning it on may prompt for notification permission; turning it off
+    // removes any already-scheduled reminder.
+    if (value) await registerMarkReminder();
+    else await cancelMarkReminder();
   };
 
   // Android: copy the archive into a folder the user picked once (Downloads,
@@ -152,6 +166,24 @@ export default function ProfileScreen() {
             trackColor={{ true: accent }}
           />
         </View>
+
+        {user?.can_write ? (
+          <View style={[styles.settingRow, { borderColor: palette.border }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: palette.text, fontWeight: '600' }}>
+                Nightly reminder to mark photos
+              </Text>
+              <Text style={{ color: palette.subtleText, fontSize: 12, marginTop: 2 }}>
+                Around 9 PM, only when photos still need a back up decision.
+              </Text>
+            </View>
+            <Switch
+              value={nightlyReminder}
+              onValueChange={toggleNightlyReminder}
+              trackColor={{ true: accent }}
+            />
+          </View>
+        ) : null}
 
         <Pressable
           style={[styles.button, { borderColor: palette.border }]}

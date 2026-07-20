@@ -20,6 +20,10 @@ Built with [Expo](https://expo.dev) / React Native (TypeScript, expo-router).
   use HyperCheese's dedupe-aware `/files` API, so re-uploading something the
   server already has is instant.
 - **Videos** — play in the detail view via the server's streaming MP4.
+- **Nightly mark reminder** — a local notification around 9 PM telling you
+  how many camera-roll photos still need a Back up / Won't upload decision,
+  so triage doesn't pile up. Nothing fires when you're caught up; tap it to
+  jump straight to the Back up screen. Toggle on the Profile tab.
 - Dark mode follows your system setting.
 
 ## Server requirements
