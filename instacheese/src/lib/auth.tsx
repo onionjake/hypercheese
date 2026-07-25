@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 
 import * as api from './api';
 import type { Session } from './api';
+import { log, logError } from './log';
 import type { CurrentUser } from './types';
 import { clearAll as clearUploadQueue } from './upload-queue';
 
@@ -51,9 +52,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const stored = await loadStoredSession();
       if (cancelled) return;
       if (!stored) {
+        log('auth', 'no stored session');
         setStatus('signedOut');
         return;
       }
+      log('auth', `restored ${stored.mode} session for ${stored.user?.username ?? 'unknown user'}`);
       setSession({ baseUrl: stored.baseUrl, mode: stored.mode, token: stored.token });
       setUser(stored.user);
       setStatus('signedIn');
@@ -61,9 +64,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const fresh = await api.fetchCurrentUser(stored);
         if (cancelled) return;
+        log('auth', `current user refreshed (can_write=${!!fresh.can_write})`);
         setUser(fresh);
         await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify({ ...stored, user: fresh }));
       } catch (err) {
+        logError('auth', 'could not refresh current user', err);
         if (!cancelled && err instanceof api.ApiError && err.status === 401) {
           await SecureStore.deleteItemAsync(STORAGE_KEY);
           setSession(null);

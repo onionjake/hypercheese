@@ -1,6 +1,7 @@
 import * as MediaLibrary from 'expo-media-library/legacy';
 import * as SQLite from 'expo-sqlite';
 
+import { flushLogs, log } from './log';
 import { SUPPORTED_EXTENSIONS, assetMtime, extensionOf } from './upload-protocol';
 
 // Local catalog of the device's media library for partial sync: which assets
@@ -87,13 +88,60 @@ function rowToAsset(row: any): LibraryAsset {
   };
 }
 
+const SCAN_PAGE = 500;
+// One statement per this many assets rather than one per asset: awaiting a
+// round trip through the async bridge for every row starves the JS thread for
+// the length of the transaction, and a full camera roll is tens of thousands
+// of rows. (Same trap the upload queue's enqueue() was rewritten out of.)
+const SCAN_UPSERT_CHUNK = 200;
+
+const ASSET_UPSERT_ROW = '(?, ?, ?, ?, ?, ?, ?, ?)';
+const ASSET_UPSERT_TAIL = `
+  ON CONFLICT(id) DO UPDATE SET
+    filename = excluded.filename,
+    media_type = excluded.media_type,
+    uri = excluded.uri,
+    supported = excluded.supported,
+    creation_time = excluded.creation_time,
+    last_seen = excluded.last_seen,
+    size = CASE WHEN assets.mtime != excluded.mtime THEN NULL ELSE assets.size END,
+    error = CASE WHEN assets.mtime != excluded.mtime THEN NULL ELSE assets.error END,
+    status = CASE
+      WHEN assets.mtime != excluded.mtime AND assets.excluded = 0
+        AND assets.status IN ('pending', 'failed', 'synced') THEN 'pending'
+      WHEN assets.mtime != excluded.mtime THEN 'none'
+      ELSE assets.status END,
+    mtime = excluded.mtime`;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+let scanPromise: Promise<void> | null = null;
+
 // Bring the catalog up to date with the media library. New assets appear
 // unselected; assets whose mtime changed get their cached size/status reset
 // (the next sync re-checks them against the server); assets deleted from the
 // library disappear from the catalog.
-export async function refreshFromLibrary(
-  onProgress?: (scanned: number) => void
-): Promise<void> {
+//
+// Two scans can be asked for at once — the library screen mounting while the
+// background reminder task is mid-rescan. They'd share a connection (nested
+// BEGINs throw) and each ends by deleting whatever its own generation didn't
+// stamp, so a second caller joins the run already in flight instead of
+// starting its own. That caller forfeits progress callbacks; only the
+// foreground scan passes one, and it is the one that normally starts the run.
+export function refreshFromLibrary(onProgress?: (scanned: number) => void): Promise<void> {
+  if (!scanPromise) {
+    scanPromise = runScan(onProgress).finally(() => {
+      scanPromise = null;
+    });
+  }
+  return scanPromise;
+}
+
+async function runScan(onProgress?: (scanned: number) => void): Promise<void> {
   const permission = await MediaLibrary.requestPermissionsAsync();
   if (!permission.granted) {
     throw new Error('Photo library permission is required');
@@ -101,58 +149,71 @@ export async function refreshFromLibrary(
 
   const db = await openDb();
   const generation = Date.now();
+  const started = Date.now();
   let after: string | undefined;
   let hasNextPage = true;
   let scanned = 0;
+  let pages = 0;
+
+  // The heaviest thing in the app that runs without anyone tapping anything,
+  // and until now it was invisible in the log. Persist the marker before the
+  // work starts: if the process dies in here the debounced flush never runs,
+  // and the export would show the freeze with no hint of what was running.
+  log('library', 'scan started');
+  await flushLogs().catch(() => {});
 
   while (hasNextPage) {
+    const pageStarted = Date.now();
     const page = await MediaLibrary.getAssetsAsync({
-      first: 500,
+      first: SCAN_PAGE,
       after,
       mediaType: [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video],
       sortBy: [[MediaLibrary.SortBy.creationTime, false]],
     });
     hasNextPage = page.hasNextPage;
     after = page.endCursor;
+    const read = Date.now() - pageStarted;
 
+    const writeStarted = Date.now();
     await db.withTransactionAsync(async () => {
-      for (const asset of page.assets) {
-        const supported = SUPPORTED_EXTENSIONS.has(extensionOf(asset.filename)) ? 1 : 0;
+      for (const rows of chunk(page.assets, SCAN_UPSERT_CHUNK)) {
+        const values = rows.map(() => ASSET_UPSERT_ROW).join(', ');
         await db.runAsync(
           `INSERT INTO assets (id, filename, media_type, uri, mtime, supported, creation_time, last_seen)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(id) DO UPDATE SET
-             filename = excluded.filename,
-             media_type = excluded.media_type,
-             uri = excluded.uri,
-             supported = excluded.supported,
-             creation_time = excluded.creation_time,
-             last_seen = excluded.last_seen,
-             size = CASE WHEN assets.mtime != excluded.mtime THEN NULL ELSE assets.size END,
-             error = CASE WHEN assets.mtime != excluded.mtime THEN NULL ELSE assets.error END,
-             status = CASE
-               WHEN assets.mtime != excluded.mtime AND assets.excluded = 0
-                 AND assets.status IN ('pending', 'failed', 'synced') THEN 'pending'
-               WHEN assets.mtime != excluded.mtime THEN 'none'
-               ELSE assets.status END,
-             mtime = excluded.mtime`,
-          asset.id,
-          asset.filename,
-          asset.mediaType,
-          asset.uri,
-          assetMtime(asset),
-          supported,
-          Math.round(asset.creationTime || 0),
-          generation
+           VALUES ${values}
+           ${ASSET_UPSERT_TAIL}`,
+          ...rows.flatMap((asset) => [
+            asset.id,
+            asset.filename,
+            asset.mediaType,
+            asset.uri,
+            assetMtime(asset),
+            SUPPORTED_EXTENSIONS.has(extensionOf(asset.filename)) ? 1 : 0,
+            Math.round(asset.creationTime || 0),
+            generation,
+          ])
         );
       }
     });
 
     scanned += page.assets.length;
+    pages++;
+    log(
+      'library',
+      `scan page ${pages}: ${page.assets.length} assets ` +
+        `(read ${read}ms, wrote ${Date.now() - writeStarted}ms, ${scanned} total)`
+    );
     onProgress?.(scanned);
+    // Hand the event loop back between pages so a long scan can't hold off
+    // rendering, the watchdog tick, or the upload queue's callbacks.
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
-  await db.runAsync('DELETE FROM assets WHERE last_seen != ?', generation);
+  const removed = await db.runAsync('DELETE FROM assets WHERE last_seen != ?', generation);
+  log(
+    'library',
+    `scan complete: ${scanned} assets, ${removed?.changes ?? 0} gone (${Date.now() - started}ms)`
+  );
 }
 
 const UNMARKED_WHERE = "supported = 1 AND excluded = 0 AND status = 'none'";

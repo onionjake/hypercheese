@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { FeedCard } from '@/components/feed-card';
 import * as api from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { log, logError } from '@/lib/log';
 import { tagLine, useTagMap } from '@/lib/tags';
 import { accent, usePalette } from '@/lib/theme';
 import type { FeedItem } from '@/lib/types';
@@ -49,19 +50,24 @@ export default function FeedScreen() {
       setError(null);
       const requestMode = modeRef.current;
       const refresh = opts.refresh || items.length === 0;
+      const started = Date.now();
+      const offset = refresh ? 0 : items.length;
+      log('feed', `loading ${requestMode} from offset ${offset}`);
       try {
         const page = await api.fetchFeed(session, {
           searchKey: refresh ? '' : searchKey,
-          offset: refresh ? 0 : items.length,
+          offset,
           limit: PAGE_SIZE,
           bullhorned: requestMode === 'bullhorns',
         });
+        log('feed', `loaded ${page.items.length} of ${page.total} (${Date.now() - started}ms)`);
         // Ignore responses that raced with a mode switch.
         if (modeRef.current !== requestMode) return;
         setSearchKey(page.searchKey);
         setTotal(page.total);
         setItems((prev) => (refresh ? page.items : [...prev, ...page.items]));
       } catch (err) {
+        logError('feed', `load failed after ${Date.now() - started}ms`, err);
         setError(err instanceof Error ? err.message : 'Could not load the feed');
       } finally {
         loadingRef.current = false;

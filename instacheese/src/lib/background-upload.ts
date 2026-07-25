@@ -3,7 +3,7 @@ import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 
 import { loadStoredSession } from './auth';
-import { log, logError } from './log';
+import { flushLogs, log, logError } from './log';
 import { refreshMarkReminderInBackground } from './mark-reminder';
 import * as queue from './upload-queue';
 
@@ -24,6 +24,7 @@ TaskManager.defineTask(UPLOAD_TASK, async () => {
     // Same gate as the foreground flows: only drain for a user known to have
     // write permission (a null cached user means we couldn't verify — skip).
     if (!stored?.user?.can_write) {
+      log('bg', 'background wakeup skipped: no signed-in writer');
       return BackgroundTask.BackgroundTaskResult.Success;
     }
     log('bg', 'background drain woke up');
@@ -35,10 +36,17 @@ TaskManager.defineTask(UPLOAD_TASK, async () => {
     // Piggyback on the wakeup: freshen the catalog and keep the nightly
     // mark reminder's count/schedule current while the app stays closed.
     await refreshMarkReminderInBackground();
+    log('bg', 'background wakeup done');
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch (err) {
     logError('bg', 'background drain failed', err);
     return BackgroundTask.BackgroundTaskResult.Failed;
+  } finally {
+    // A headless launch is torn down as soon as this resolves — well inside
+    // the flush debounce — so everything logged above would be dropped and
+    // the run would show up in the export as a bare "started" line with
+    // nothing after it. Force it to disk before handing back to the OS.
+    await flushLogs().catch(() => {});
   }
 });
 

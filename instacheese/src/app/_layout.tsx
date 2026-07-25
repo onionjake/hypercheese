@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useColorScheme, View } from 'react-native';
 
 import UploadIndicator from '@/components/upload-indicator';
@@ -10,6 +10,7 @@ import {
   registerBackgroundUploads,
   unregisterBackgroundUploads,
 } from '@/lib/background-upload';
+import { log } from '@/lib/log';
 import { cancelMarkReminder, registerMarkReminder, REMINDER_ID } from '@/lib/mark-reminder';
 
 SplashScreen.preventAutoHideAsync();
@@ -48,12 +49,26 @@ function RootNavigator() {
   // Tapping the nightly reminder lands on the library screen it's nagging
   // about. useLastNotificationResponse covers both warm taps and cold starts;
   // wait for signedIn so the auth redirect doesn't immediately bounce us.
+  //
+  // It reports the LAST response, which sticks around: without consuming it,
+  // one tap sends every later cold start to the library too (and any re-run of
+  // this effect re-pushes the screen). The ref catches repeat runs within the
+  // process — a genuine second tap arrives as a new response object — and
+  // clearing it at the source stops the next launch from replaying this one.
   const notificationResponse = Notifications.useLastNotificationResponse();
+  const handledResponse = useRef<typeof notificationResponse>(null);
   useEffect(() => {
-    if (status !== 'signedIn') return;
-    if (notificationResponse?.notification.request.identifier === REMINDER_ID) {
-      router.push('/library');
-    }
+    if (status !== 'signedIn' || !notificationResponse) return;
+    if (notificationResponse.notification.request.identifier !== REMINDER_ID) return;
+    if (handledResponse.current === notificationResponse) return;
+    handledResponse.current = notificationResponse;
+    log('app', 'opening library from mark reminder');
+    // Absent on app builds predating the notifications native module (the
+    // reminder is written to degrade rather than break the app).
+    void (
+      Notifications as { clearLastNotificationResponseAsync?: () => Promise<void> }
+    ).clearLastNotificationResponseAsync?.();
+    router.push('/library');
   }, [notificationResponse, status, router]);
 
   return (
