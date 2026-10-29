@@ -603,7 +603,9 @@ export async function libraryLocalUri(
   const slowMo = await slowMotionOriginal(assetId);
   if (slowMo.kind === 'original') return slowMo.uri;
   if (slowMo.kind === 'unavailable') {
-    throw new Error('This slow-motion video isn’t downloaded to this phone — open it in Photos, then retry');
+    throw new Error(
+      'Couldn’t read the original of this slow-motion video — if it’s only in iCloud, it can’t be backed up from this phone'
+    );
   }
   let info: Awaited<ReturnType<typeof assetInfo>>;
   try {
