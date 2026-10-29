@@ -168,7 +168,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       token = await api.tokenLogin(baseUrl, username, password, nickname, Platform.OS);
     } catch (err) {
-      if (err instanceof api.ApiError && err.status === 401) {
+      // /files/auth only matches usernames, but the web sign-in also takes
+      // an email: let an email reach the session login below, which mints
+      // the upload token from the (trusted) cookie afterwards.
+      if (err instanceof api.ApiError && err.status === 401 && !username.includes('@')) {
         throw new Error('Invalid username or password');
       }
       // Anything else (404, 500, proxy errors) just means the token endpoint

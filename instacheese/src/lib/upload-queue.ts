@@ -1,6 +1,6 @@
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import * as SQLite from 'expo-sqlite';
-import { AppState, Platform } from 'react-native';
+import { AppState } from 'react-native';
 
 import { type Session } from './api';
 import {
@@ -64,11 +64,12 @@ try {
 } catch {
   // unavailable in some headless contexts; AppState.currentState still works
 }
-// iOS only: that's where suspension cuts transfers off. On Android the
-// process keeps running, so a background failure is a real one (and pausing
-// on it would re-send a file that always fails on every wakeup, unstruck).
+// Both platforms: iOS suspends a backgrounded app, and Android's cached-app
+// freezer (Android 14+, many 12/13 devices) and Doze freeze it, killing the
+// in-flight transfer either way. A file that fails on its own in the
+// background can't loop unstruck: attempts are counted up front and capped
+// by MAX_DEFERRALS.
 function wasBackgroundedSince(since: number, startedInBackground: boolean): boolean {
-  if (Platform.OS !== 'ios') return false;
   // startedInBackground: a wakeup's attempt never sees a 'background' event,
   // and its error may only surface after the app is opened again.
   return (

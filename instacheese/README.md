@@ -97,7 +97,7 @@ iOS remains manual for now: `npx eas build --platform ios` → TestFlight.
 
 ## Notes
 
-- Sign-in uses your HyperCheese **username** (not email).
+- Sign in with your HyperCheese username (or the email on your account).
 - Accounts without write permission get a read-only feed (no likes,
   comments, or uploads) until an admin bumps their role.
 - Picked iOS media is uploaded as the original bytes (no on-device
