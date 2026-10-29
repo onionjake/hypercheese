@@ -104,7 +104,6 @@ iOS remains manual for now: `npx eas build --platform ios` → TestFlight.
   transcoding), which keeps dedupe stable across picks. HEIC photos show as
   not supported until the server's importer accepts them; set the camera to
   "Most Compatible" to shoot JPEG.
-- iOS slow-motion videos can't be backed up or synced from the camera roll
-  yet: the photo library only hands them out as a fresh re-encode each
-  time, never the original. They show as "not supported" on the Backup
-  screen; sharing one through the picker still works.
+- iOS slow-motion videos are backed up from their original high-frame-rate
+  file (the photo library's slow-motion version is only ever a fresh
+  re-encode).
