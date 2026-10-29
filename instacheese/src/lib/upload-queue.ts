@@ -481,7 +481,8 @@ export async function retryFailed(): Promise<void> {
 
 // Failures can be permanent (the photo was deleted, a picker copy purged),
 // and retrying those only fails again — let the user dismiss them. Backup
-// items whose photo still exists come back on the next auto-retry anyway.
+// items whose photo still exists are re-queued by auto-retry once their
+// backoff (FAILED_RETRY_MS) passes.
 export async function clearFailed(): Promise<void> {
   const db = await openDb();
   await db.runAsync(`DELETE FROM uploads WHERE status = 'failed'`);
@@ -671,19 +672,27 @@ async function resetInFlight(): Promise<void> {
   }
 }
 
+// Finished and long-failed rows age out. Run by every drain and auto-retry
+// — a queue with only failed rows never starts a drain.
+async function pruneExpired(): Promise<void> {
+  const db = await openDb();
+  const now = Date.now();
+  await db.runAsync(
+    `DELETE FROM uploads WHERE status IN ('done', 'exists') AND updated_at < ?`,
+    now - FINISHED_TTL_MS
+  );
+  await db.runAsync(
+    `DELETE FROM uploads WHERE status = 'failed' AND updated_at < ?`,
+    now - FAILED_TTL_MS
+  );
+}
+
 class Paused extends Error {}
 
 async function drain(trigger: string, sess: Session): Promise<void> {
   const db = await openDb();
   await resetInFlight();
-  await db.runAsync(
-    `DELETE FROM uploads WHERE status IN ('done', 'exists') AND updated_at < ?`,
-    Date.now() - FINISHED_TTL_MS
-  );
-  await db.runAsync(
-    `DELETE FROM uploads WHERE status = 'failed' AND updated_at < ?`,
-    Date.now() - FAILED_TTL_MS
-  );
+  await pruneExpired();
   await refreshAndBroadcast();
   log('queue', `drain started (${trigger}): ${counts.remaining} queued`);
 
@@ -920,7 +929,8 @@ export function startAutoRetry(s: Session): () => void {
         await enqueueBackupPending({ failedRetryAfterMs: FAILED_RETRY_MS, epoch: startedIn });
       }
       if (startedIn !== epoch) return;
-      await refreshCounts();
+      await pruneExpired();
+      await refreshAndBroadcast();
       if (counts.remaining > 0) kick(`auto:${trigger}`);
     } catch (err) {
       logError('queue', `auto retry failed (${trigger})`, err);

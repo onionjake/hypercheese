@@ -225,19 +225,23 @@ export async function sessionLogin(
 // Ends any browser session (and remember-me cookie) for this server. Best
 // effort and bounded: sign-in and sign-out both wait on it, and a dead
 // network must not hang either.
-export async function sessionLogout(session: Session): Promise<void> {
+// Resolves true when the server answered the sign-out, i.e. the cookie jar
+// is known to hold no earlier user's session afterwards.
+export async function sessionLogout(session: Session): Promise<boolean> {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), 10_000);
   try {
     const csrfToken = await fetchCsrfToken(session.baseUrl, '/', abort.signal);
-    await fetch(`${session.baseUrl}/users/sign_out`, {
+    const res = await fetch(`${session.baseUrl}/users/sign_out`, {
       method: 'DELETE',
       credentials: 'include',
       headers: { 'X-CSRF-Token': csrfToken },
       signal: abort.signal,
     });
+    return res.status < 500;
   } catch {
     // Best effort — local state is cleared regardless.
+    return false;
   } finally {
     clearTimeout(timer);
     csrfTokens.delete(session.baseUrl);
