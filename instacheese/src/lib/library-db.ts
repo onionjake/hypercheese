@@ -1,3 +1,4 @@
+import * as LegacyFileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library/legacy';
 import * as SQLite from 'expo-sqlite';
 
@@ -81,6 +82,19 @@ async function openDb(): Promise<SQLite.SQLiteDatabase> {
     })();
   }
   return dbPromise;
+}
+
+// getAssetInfoAsync for every caller. On iOS it writes a Live Photo's paired
+// video to a fresh temp file on EVERY call and never deletes it; a Sync or
+// backup over thousands of Live Photos would fill the phone's storage with
+// copies nobody uses. Delete it before handing the info back.
+export async function assetInfo(assetId: string): Promise<MediaLibrary.AssetInfo> {
+  const info = await MediaLibrary.getAssetInfoAsync(assetId);
+  const paired = info?.pairedVideoAsset?.uri;
+  if (paired) {
+    await LegacyFileSystem.deleteAsync(paired, { idempotent: true }).catch(() => {});
+  }
+  return info;
 }
 
 function rowToAsset(row: any): LibraryAsset {
