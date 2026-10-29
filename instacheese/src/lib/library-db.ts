@@ -1,4 +1,5 @@
 import { Directory, File, Paths } from 'expo-file-system';
+import { MediaSubtype, MediaType, Asset as PhotoKitAsset } from 'expo-media-library';
 import * as MediaLibrary from 'expo-media-library/legacy';
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
@@ -115,6 +116,34 @@ export async function assetInfo(
     return { ...info, localUri: undefined, slowMotion: true };
   }
   return info;
+}
+
+// iOS slow-motion videos only: the ORIGINAL high-frame-rate file, through
+// the newer media-library API (it asks PhotoKit for the original version).
+// The legacy lookup can only re-encode the clip — minutes of encoding and a
+// different file every time. Other assets keep the legacy lookup, which
+// returns their current (edited) version. Null when it doesn't apply or
+// can't help (not iOS, not slow-mo, an iCloud-only original, the API
+// unavailable), so callers fall back to the legacy lookup.
+export async function slowMotionOriginalUri(assetId: string): Promise<string | null> {
+  if (Platform.OS !== 'ios') return null;
+  try {
+    const asset = new PhotoKitAsset(assetId);
+    if ((await asset.getMediaType()) !== MediaType.VIDEO) return null;
+    if (!(await asset.getMediaSubtypes()).includes(MediaSubtype.HIGH_FRAME_RATE)) return null;
+    const uri = await asset.getUri();
+    if (!uri) return null;
+    const fileUri = uri.startsWith('file://') ? uri : `file://${uri}`;
+    // Should not happen with the original version requested; if it does,
+    // it's an unstable re-encode, not something to back up.
+    if (fileUri.includes('slowMoVideo-')) {
+      deleteFile(fileUri);
+      return null;
+    }
+    return fileUri;
+  } catch {
+    return null;
+  }
 }
 
 // Through the File API: the legacy deleteAsync refuses anything outside
