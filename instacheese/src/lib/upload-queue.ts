@@ -56,8 +56,10 @@ const MAX_DEFERRALS = 3;
 // it, which says nothing about the file — so it isn't counted as a failure.
 let lastLeftForeground = 0;
 try {
+  // 'background' only: 'inactive' (Control Center, a system alert) doesn't
+  // suspend anything.
   AppState.addEventListener('change', (state) => {
-    if (state !== 'active') lastLeftForeground = Date.now();
+    if (state === 'background') lastLeftForeground = Date.now();
   });
 } catch {
   // unavailable in some headless contexts; AppState.currentState still works
@@ -67,7 +69,7 @@ try {
 // on it would re-send a file that always fails on every wakeup, unstruck).
 function wasBackgroundedSince(since: number): boolean {
   if (Platform.OS !== 'ios') return false;
-  return AppState.currentState !== 'active' || lastLeftForeground >= since;
+  return AppState.currentState === 'background' || lastLeftForeground >= since;
 }
 // Finished rows stick around so the queue screen can show what happened, but
 // not forever.
@@ -384,7 +386,11 @@ export function enqueue(
              error = NULL,
              retry_at = NULL,
              strikes = 0,
-             deferrals = 0,
+             -- A row still waiting keeps its deferral count: backup items
+             -- are re-upserted on every auto-retry, and resetting it would
+             -- put a file that keeps getting cut off back at the front.
+             deferrals = CASE WHEN uploads.status IN ('queued', 'checking', 'hashing', 'uploading')
+               THEN uploads.deferrals ELSE 0 END,
              updated_at = excluded.updated_at`,
           ...rows.flatMap((item) => [
             item.key,
@@ -891,6 +897,10 @@ async function drain(trigger: string, sess: Session): Promise<void> {
       // Connectivity can change mid-run (leave the house, Wi-Fi drops).
       await ensureNetwork();
       const attemptStarted = Date.now();
+      // Counted up front, not when the transfer dies: if iOS kills the
+      // suspended process there is no rejection to count it in, and the file
+      // would be first in line again on relaunch. settle() clears it.
+      await db.runAsync('UPDATE uploads SET deferrals = deferrals + 1 WHERE key = ?', item.key);
       try {
         // Claim the item before resolving its file: that can take seconds
         // (iCloud download), and removeQueued() must not delete a row the
@@ -944,11 +954,7 @@ async function drain(trigger: string, sess: Session): Promise<void> {
               'SELECT deferrals FROM uploads WHERE key = ?',
               item.key
             );
-            if ((row?.deferrals ?? 0) < MAX_DEFERRALS) {
-              await db.runAsync(
-                'UPDATE uploads SET deferrals = deferrals + 1 WHERE key = ?',
-                item.key
-              );
+            if ((row?.deferrals ?? 0) <= MAX_DEFERRALS) {
               logError('queue', `upload of ${item.filename} cut off in the background, pausing`, err);
               throw new Paused('Paused while the app was in the background');
             }
