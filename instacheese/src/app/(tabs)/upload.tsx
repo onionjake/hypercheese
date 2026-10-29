@@ -33,7 +33,7 @@ const STATUS_LABELS: Record<UploadStatus, string> = {
 const IN_FLIGHT: UploadStatus[] = ['queued', 'checking', 'hashing', 'uploading'];
 
 export default function UploadScreen() {
-  const { user } = useAuth();
+  const { session, user } = useAuth();
   const palette = usePalette();
   const [files, setFiles] = useState<UploadFile[]>([]);
 
@@ -91,7 +91,11 @@ export default function UploadScreen() {
   const summaryLine =
     files.length > 0 && inFlightCount === 0 && readyFiles.length === 0 && uploadedCount > 0
       ? failedFiles.length === 0
-        ? `Shared ${uploadedCount} ${uploadedCount === 1 ? 'item' : 'items'} with the family 🧀`
+        ? session?.mode === 'session'
+          ? // Compatibility mode: stored, but maybe not in the gallery (see
+            // CompatNotice) — don't claim the family can see them.
+            `Uploaded ${uploadedCount} ${uploadedCount === 1 ? 'item' : 'items'} to the server`
+          : `Shared ${uploadedCount} ${uploadedCount === 1 ? 'item' : 'items'} with the family 🧀`
         : `${uploadedCount} uploaded, ${failedFiles.length} failed`
       : null;
 
