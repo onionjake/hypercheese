@@ -205,6 +205,14 @@ export default function QueueScreen() {
               </Text>
             </Pressable>
           ) : null}
+          {summary.failed > 0 ? (
+            <Pressable
+              style={[styles.controlButton, { borderColor: palette.border }]}
+              onPress={() => queue.clearFailed()}
+            >
+              <Text style={[styles.controlText, { color: palette.subtleText }]}>Clear failed</Text>
+            </Pressable>
+          ) : null}
           {summary.finished > 0 ? (
             <Pressable
               style={[styles.controlButton, { borderColor: palette.border }]}

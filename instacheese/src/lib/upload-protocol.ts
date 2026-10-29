@@ -97,7 +97,9 @@ export function assetMtime(asset: {
 
 export function authHeaders(session: Session): Record<string, string> {
   if (!session.token) {
-    throw new Error('Uploading requires the upgraded HyperCheese server');
+    // Only a session whose upload sign-in failed has no token; the next app
+    // start retries it (auth.tsx), and signing out and in always does.
+    throw new Error('Upload sign-in missing — restart the app, or sign out and back in');
   }
   return {
     Authorization: `Bearer ${session.token}`,

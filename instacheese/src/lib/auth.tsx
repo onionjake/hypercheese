@@ -43,6 +43,18 @@ async function forgetAccountState(): Promise<void> {
   await releaseCatalog().catch((err) => logError('auth', 'could not release catalog', err));
 }
 
+// Best effort: null when the server still won't issue one.
+async function recoverUploadToken(baseUrl: string): Promise<string | null> {
+  try {
+    const token = await api.tokenFromSession(baseUrl, `InstaCheese on ${Platform.OS}`, Platform.OS);
+    log('auth', 'upload token obtained through the browser session');
+    return token;
+  } catch (err) {
+    logError('auth', 'could not obtain an upload token', err);
+    return null;
+  }
+}
+
 // Identifies whose backup marks the library catalog holds. Scheme and a
 // leading www. are dropped so the same server typed two ways still matches.
 function accountKey(baseUrl: string, username: string): string {
@@ -108,8 +120,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const fresh = await api.fetchCurrentUser(stored);
         if (stale()) return;
         log('auth', `current user refreshed (can_write=${!!fresh.can_write})`);
+        // A session saved without upload credentials (its token request
+        // failed at sign-in) gets another try now that the cookie is proven.
+        let token = stored.token;
+        if (stored.mode === 'session' && !token) {
+          token = await recoverUploadToken(stored.baseUrl);
+          if (stale()) return;
+          if (token) setSession({ baseUrl: stored.baseUrl, mode: stored.mode, token });
+        }
         setUser(fresh);
-        await writeStoredSession({ ...stored, user: fresh });
+        await writeStoredSession({ ...stored, token, user: fresh });
       } catch (err) {
         logError('auth', 'could not refresh current user', err);
         if (!stale() && err instanceof api.ApiError && err.status === 401) {
@@ -178,6 +198,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       throw err instanceof Error ? err : new Error('Could not sign in');
     }
+    // The password-based token request failed for some transient reason
+    // (timeout, proxy error): the cookie we just got can mint one instead,
+    // or uploads would stay disabled until the next sign-in.
+    sessionSession.token ??= await recoverUploadToken(baseUrl);
     await persist(sessionSession, freshUser);
 
     async function persist(newSession: Session, newUser: CurrentUser | null) {

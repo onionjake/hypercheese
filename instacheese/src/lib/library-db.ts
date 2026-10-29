@@ -73,6 +73,10 @@ async function openDb(): Promise<SQLite.SQLiteDatabase> {
       if (!cols.some((c) => c.name === 'failed_at')) {
         await db.execAsync('ALTER TABLE assets ADD COLUMN failed_at INTEGER');
       }
+      // Scan generation that first failed to see this asset (see runScan).
+      if (!cols.some((c) => c.name === 'missing_since')) {
+        await db.execAsync('ALTER TABLE assets ADD COLUMN missing_since INTEGER');
+      }
       return db;
     })();
   }
@@ -112,6 +116,7 @@ const ASSET_UPSERT_TAIL = `
     supported = excluded.supported,
     creation_time = excluded.creation_time,
     last_seen = excluded.last_seen,
+    missing_since = NULL,
     size = CASE WHEN assets.mtime != excluded.mtime THEN NULL ELSE assets.size END,
     error = CASE WHEN assets.mtime != excluded.mtime THEN NULL ELSE assets.error END,
     status = CASE
@@ -238,12 +243,29 @@ async function runScan(
     log('library', `scan complete (limited access, not pruning): ${scanned} assets`);
     return;
   }
-  const removed = await db.runAsync('DELETE FROM assets WHERE last_seen != ?', generation);
+  // Android pages by row offset, so a photo deleted mid-scan shifts every
+  // later row and one still-present photo per deletion goes unseen. Pruning
+  // on a single miss would throw away its marks; only prune what two scans
+  // in a row missed, and hide a once-missed row (PRESENT) in between — a
+  // false miss reappears with its marks intact on the next scan.
+  const removed = await db.runAsync(
+    'DELETE FROM assets WHERE last_seen != ? AND missing_since IS NOT NULL',
+    generation
+  );
+  const missing = await db.runAsync(
+    'UPDATE assets SET missing_since = ? WHERE last_seen != ? AND missing_since IS NULL',
+    generation,
+    generation
+  );
   log(
     'library',
-    `scan complete: ${scanned} assets, ${removed?.changes ?? 0} gone (${Date.now() - started}ms)`
+    `scan complete: ${scanned} assets, ${removed?.changes ?? 0} gone, ` +
+      `${missing?.changes ?? 0} newly missing (${Date.now() - started}ms)`
   );
 }
+
+// Rows the last scan saw (or that haven't been missed yet).
+const PRESENT = 'missing_since IS NULL';
 
 const UNMARKED_WHERE = "supported = 1 AND excluded = 0 AND status = 'none'";
 
@@ -269,7 +291,7 @@ export async function listAssets(
   const db = await openDb();
   const rows = after
     ? await db.getAllAsync(
-        `SELECT * FROM assets WHERE (${FILTER_WHERE[filter]})
+        `SELECT * FROM assets WHERE (${FILTER_WHERE[filter]}) AND ${PRESENT}
            AND (creation_time < ? OR (creation_time = ? AND id < ?))
          ORDER BY creation_time DESC, id DESC LIMIT ?`,
         after.creationTime,
@@ -278,7 +300,7 @@ export async function listAssets(
         limit
       )
     : await db.getAllAsync(
-        `SELECT * FROM assets WHERE ${FILTER_WHERE[filter]}
+        `SELECT * FROM assets WHERE (${FILTER_WHERE[filter]}) AND ${PRESENT}
          ORDER BY creation_time DESC, id DESC LIMIT ?`,
         limit
       );
@@ -309,6 +331,7 @@ export async function libraryCounts(): Promise<LibraryCounts> {
       SUM(supported = 1 AND excluded = 0 AND status IN ('pending', 'failed')) AS pending,
       SUM(supported = 1 AND (selected = 1 OR (excluded = 0 AND status IN ('pending', 'failed')))) AS backup_ready
     FROM assets
+    WHERE ${PRESENT}
   `);
   return {
     total: row?.total ?? 0,
@@ -469,7 +492,7 @@ export async function markedForSync(
       : "AND NOT (status = 'failed' AND failed_at IS NOT NULL AND failed_at > ?)";
   const rows = await db.getAllAsync(
     `SELECT * FROM assets
-     WHERE supported = 1 AND excluded = 0 AND status IN (${statuses}) ${recentFailure}
+     WHERE supported = 1 AND excluded = 0 AND ${PRESENT} AND status IN (${statuses}) ${recentFailure}
      ORDER BY creation_time DESC, id DESC`,
     ...(opts.failedRetryAfterMs === undefined ? [] : [Date.now() - opts.failedRetryAfterMs])
   );
