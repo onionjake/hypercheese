@@ -198,6 +198,7 @@ const ASSET_UPSERT_TAIL = `
     missing_since = NULL,
     size = CASE WHEN assets.mtime != excluded.mtime THEN NULL ELSE assets.size END,
     error = CASE WHEN assets.mtime != excluded.mtime THEN NULL ELSE assets.error END,
+    failures = CASE WHEN assets.mtime != excluded.mtime THEN 0 ELSE assets.failures END,
     status = CASE
       WHEN assets.mtime != excluded.mtime AND assets.excluded = 0
         AND assets.status IN ('pending', 'failed', 'synced') THEN 'pending'
