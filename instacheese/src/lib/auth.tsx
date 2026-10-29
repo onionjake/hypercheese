@@ -22,6 +22,9 @@ const STORAGE_KEY = 'instacheese.session';
 
 export interface StoredSession extends Session {
   user: CurrentUser | null;
+  // The sign-in confirmed the cookie jar held no earlier user's session, so
+  // the cookie is this account's and may mint upload credentials.
+  cookieTrusted?: boolean;
 }
 
 interface AuthContextValue {
@@ -123,7 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // A session saved without upload credentials (its token request
         // failed at sign-in) gets another try now that the cookie is proven.
         let token = stored.token;
-        if (stored.mode === 'session' && !token) {
+        if (stored.mode === 'session' && !token && stored.cookieTrusted) {
           token = await recoverUploadToken(stored.baseUrl);
           if (stale()) return;
           if (token) setSession({ baseUrl: stored.baseUrl, mode: stored.mode, token });
@@ -158,7 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // couldn't reach the server, a half-finished sign-in) would make the
     // server treat these credentials as that earlier user: /files/auth
     // trusts current_user over the posted password. Drop it first.
-    await api.sessionLogout({ baseUrl, mode: 'session', token: null });
+    const cookieTrusted = await api.sessionLogout({ baseUrl, mode: 'session', token: null });
 
     // Preferred path: a device JWT that the upgraded backend accepts on /api.
     let token: string | null = null;
@@ -199,12 +202,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw err instanceof Error ? err : new Error('Could not sign in');
     }
     // The password-based token request failed for some transient reason
-    // (timeout, proxy error): the cookie we just got can mint one instead,
-    // or uploads would stay disabled until the next sign-in.
-    sessionSession.token ??= await recoverUploadToken(baseUrl);
-    await persist(sessionSession, freshUser);
+    // (timeout, proxy error) — without a token uploads would stay disabled
+    // until the next sign-in. Try the password once more, then the cookie we
+    // just got, but only if the jar was cleared first: a leftover cookie
+    // from another account would otherwise mint THAT account's token.
+    if (!sessionSession.token) {
+      sessionSession.token = await api
+        .tokenLogin(baseUrl, username, password, nickname, Platform.OS)
+        .catch(() => null);
+    }
+    if (!sessionSession.token && cookieTrusted) {
+      sessionSession.token = await recoverUploadToken(baseUrl);
+    }
+    await persist(sessionSession, freshUser, cookieTrusted);
 
-    async function persist(newSession: Session, newUser: CurrentUser | null) {
+    async function persist(newSession: Session, newUser: CurrentUser | null, trusted = false) {
       // Before the session goes live (and the upload queue starts): a
       // different account must not inherit this device's backup marks — or
       // queue rows a sign-out killed midway left behind. Signing in always
@@ -212,7 +224,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await clearUploadQueue();
       await claimCatalog(accountKey(baseUrl, username));
       clearTagCache();
-      await writeStoredSession({ ...newSession, user: newUser });
+      await writeStoredSession({ ...newSession, user: newUser, cookieTrusted: trusted });
       setSession(newSession);
       setUser(newUser);
       setStatus('signedIn');
