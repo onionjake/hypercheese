@@ -103,3 +103,7 @@ iOS remains manual for now: `npx eas build --platform ios` → TestFlight.
 - iOS photos are requested in JPEG/H.264 ("compatible") form so the server's
   importer accepts them; HEIC-only originals are transcoded by iOS at pick
   time.
+- iOS slow-motion videos can't be backed up or synced from the camera roll
+  yet: the photo library only hands them out as a fresh re-encode each
+  time, never the original. They show as "not supported" on the Backup
+  screen; sharing one through the picker still works.
