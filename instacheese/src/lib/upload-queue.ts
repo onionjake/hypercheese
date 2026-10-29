@@ -524,14 +524,17 @@ export async function libraryLocalUri(
   assetId: string,
   fallbackUri: string | null
 ): Promise<string> {
+  let info: Awaited<ReturnType<typeof assetInfo>>;
   try {
-    const info = await assetInfo(assetId);
+    info = await assetInfo(assetId);
     if (info.localUri) return info.localUri;
-    throw new Error('Original not available on this device');
   } catch (err) {
     if (fallbackUri?.startsWith('file://')) return fallbackUri;
     throw err;
   }
+  if (info.slowMotion) throw new Error("Slow-motion videos can't be backed up from the app yet");
+  if (fallbackUri?.startsWith('file://')) return fallbackUri;
+  throw new Error('Original not available on this device');
 }
 
 // A persisted localUri can go stale — picker items keep an ImagePicker

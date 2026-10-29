@@ -21,6 +21,19 @@ export const SUPPORTED_EXTENSIONS = new Set([
   'avi', 'mov', 'mpg', 'mts', 'mp4', 'mkv', 'vob', 'dv', 'wmv',
 ]);
 
+// Whether a media-library asset can be backed up: a supported extension,
+// and not an iOS slow-motion video. Those have no single original file — the
+// library re-encodes the whole clip into a new export on every lookup (minutes
+// of encoding, hundreds of MB left behind each time, and a different file
+// each run, so its size/hash never settle) — so they're left out.
+export function isBackupSupported(asset: {
+  filename: string;
+  mediaSubtypes?: string[] | null;
+}): boolean {
+  if (asset.mediaSubtypes?.includes('highFrameRate')) return false;
+  return SUPPORTED_EXTENSIONS.has(extensionOf(asset.filename));
+}
+
 export function extensionOf(name: string): string {
   const match = name.match(/\.(\w+)$/);
   return match ? match[1].toLowerCase() : '';
