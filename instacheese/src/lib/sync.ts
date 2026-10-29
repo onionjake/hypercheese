@@ -149,7 +149,12 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
         if (size === undefined) {
           const netPermission = await uploadAllowedRecently();
           if (!netPermission.allowed) {
-            throw new Error(netPermission.reason ?? 'Uploads paused');
+            // Keep the sizes this page already resolved (each may have been
+            // an iCloud download) so scanning again picks up from here.
+            await saveSizeCache(sizeCache);
+            throw new Error(
+              `${netPermission.reason ?? 'Uploads paused'} — scan again once you're back on Wi-Fi`
+            );
           }
           try {
             const localUri = await queue.libraryLocalUri(asset.id, asset.uri);

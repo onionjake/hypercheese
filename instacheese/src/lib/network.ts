@@ -53,7 +53,9 @@ let recent: { at: number; result: UploadPermission } | null = null;
 export async function uploadAllowedRecently(maxAgeMs = 5000): Promise<UploadPermission> {
   if (recent && Date.now() - recent.at < maxAgeMs) return recent.result;
   const result = await uploadAllowed();
-  recent = { at: Date.now(), result };
+  // Only 'allowed' is cached: a cached 'blocked' could re-pause a drain the
+  // network-change retry restarted a moment after Wi-Fi came back.
+  recent = result.allowed ? { at: Date.now(), result } : null;
   return result;
 }
 
