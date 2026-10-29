@@ -350,6 +350,12 @@ export async function hashAndUpload(
         'X-MTime': mtimeParam(file.mtime),
         'X-SHA256': sha,
         'X-Size': String(file.size),
+        // Explicit, or iOS's CFNetwork defaults a bodied request to
+        // application/x-www-form-urlencoded, and Rack would try to parse the
+        // media bytes as form data (failing with a 400) before the action
+        // runs. Rails has no parser for octet-stream, so the body reaches
+        // request.body untouched.
+        'Content-Type': 'application/octet-stream',
       },
     },
     onProgress
