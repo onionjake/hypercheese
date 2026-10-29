@@ -129,6 +129,14 @@ async function openDb(): Promise<SQLite.SQLiteDatabase> {
         );
         CREATE INDEX IF NOT EXISTS idx_uploads_status ON uploads (status);
       `);
+      // Automatic retry of cut-off picker/sync transfers (see settle()).
+      const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(uploads)');
+      if (!cols.some((c) => c.name === 'retry_at')) {
+        await db.execAsync('ALTER TABLE uploads ADD COLUMN retry_at INTEGER');
+      }
+      if (!cols.some((c) => c.name === 'strikes')) {
+        await db.execAsync('ALTER TABLE uploads ADD COLUMN strikes INTEGER NOT NULL DEFAULT 0');
+      }
       return db;
     })();
   }
@@ -335,6 +343,8 @@ export function enqueue(
              size = excluded.size,
              status = 'queued',
              error = NULL,
+             retry_at = NULL,
+             strikes = 0,
              updated_at = excluded.updated_at`,
           ...rows.flatMap((item) => [
             item.key,
@@ -625,11 +635,20 @@ async function settle(
 ) {
   item.error = error ?? null;
   const db = await openDb();
+  const now = Date.now();
+  // Backup items are retried through their catalog marks. Picker and sync
+  // rows have nothing else to bring them back, so a cut-off transfer gets
+  // its own schedule here: once right away, then after the usual backoff.
+  const scheduleRetry = status === 'failed' && !!opts.retrySoon && item.source !== 'backup';
   await db.runAsync(
-    'UPDATE uploads SET status = ?, error = ?, updated_at = ? WHERE key = ?',
+    `UPDATE uploads SET status = ?, error = ?, updated_at = ?,
+       retry_at = ${scheduleRetry ? 'CASE WHEN strikes = 0 THEN ? ELSE ? END' : 'NULL'},
+       strikes = ${status === 'failed' ? 'strikes + 1' : '0'}
+     WHERE key = ?`,
     status,
     item.error,
-    Date.now(),
+    now,
+    ...(scheduleRetry ? [now, now + FAILED_RETRY_MS] : []),
     item.key
   );
   item.status = status;
@@ -684,9 +703,28 @@ async function pruneExpired(): Promise<void> {
     now - FINISHED_TTL_MS
   );
   await db.runAsync(
-    `DELETE FROM uploads WHERE status = 'failed' AND updated_at < ?`,
+    `DELETE FROM uploads WHERE status = 'failed' AND retry_at IS NULL AND updated_at < ?`,
     now - FAILED_TTL_MS
   );
+}
+
+// Put failed picker/sync rows whose scheduled retry is due back in the queue.
+export async function requeueDueRetries(): Promise<void> {
+  const db = await openDb();
+  const now = Date.now();
+  const rows = await db.getAllAsync(
+    `SELECT * FROM uploads WHERE status = 'failed' AND retry_at IS NOT NULL AND retry_at <= ?`,
+    now
+  );
+  if (rows.length === 0) return;
+  await db.runAsync(
+    `UPDATE uploads SET status = 'queued', error = NULL, retry_at = NULL, updated_at = ?
+     WHERE status = 'failed' AND retry_at IS NOT NULL AND retry_at <= ?`,
+    now,
+    now
+  );
+  for (const row of rows) emitItem({ ...rowToItem(row), status: 'queued', error: null });
+  log('queue', `re-queued ${rows.length} interrupted uploads`);
 }
 
 class Paused extends Error {}
@@ -931,6 +969,7 @@ export function startAutoRetry(s: Session): () => void {
         await enqueueBackupPending({ failedRetryAfterMs: FAILED_RETRY_MS, epoch: startedIn });
       }
       if (startedIn !== epoch) return;
+      await requeueDueRetries();
       await pruneExpired();
       await refreshAndBroadcast();
       if (counts.remaining > 0) kick(`auto:${trigger}`);

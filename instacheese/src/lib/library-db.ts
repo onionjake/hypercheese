@@ -1,8 +1,9 @@
-import * as LegacyFileSystem from 'expo-file-system/legacy';
+import { File } from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library/legacy';
 import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
 
-import { flushLogs, log } from './log';
+import { flushLogs, log, logError } from './log';
 import { MEDIA_PERMISSIONS, assetMtime, isBackupSupported } from './upload-protocol';
 
 // Local catalog of the device's media library for partial sync: which assets
@@ -99,15 +100,47 @@ export async function assetInfo(
   const info = await MediaLibrary.getAssetInfoAsync(assetId);
   const paired = info?.pairedVideoAsset?.uri;
   if (paired) {
-    await LegacyFileSystem.deleteAsync(paired, { idempotent: true }).catch(() => {});
+    deleteFile(paired);
+    sweepPairedVideoLeftovers(paired);
   }
   const local = info?.localUri;
   if (local && local.includes('/MediaLibrary/slowMoVideo-')) {
-    const uri = local.startsWith('file://') ? local : `file://${local}`;
-    await LegacyFileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+    deleteFile(local.startsWith('file://') ? local : `file://${local}`);
     return { ...info, localUri: undefined, slowMotion: true };
   }
   return info;
+}
+
+// Through the File API: the legacy deleteAsync refuses anything outside
+// Caches/Documents (it checks `<file>/..` for write access), and the paired
+// videos live in tmp/.
+function deleteFile(uri: string): void {
+  try {
+    const file = new File(uri);
+    if (file.exists) file.delete();
+  } catch (err) {
+    logError('library', `could not delete ${uri}`, err);
+  }
+}
+
+// Builds before the cleanup above (whose legacy delete silently failed) left
+// one <UUID>.mov per Live Photo lookup in tmp/; clear them once per run.
+let sweptLeftovers = false;
+function sweepPairedVideoLeftovers(sample: string): void {
+  if (sweptLeftovers || Platform.OS !== 'ios') return;
+  sweptLeftovers = true;
+  try {
+    let removed = 0;
+    for (const entry of new File(sample).parentDirectory.list()) {
+      if (entry instanceof File && /^[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}\.mov$/i.test(entry.name)) {
+        entry.delete();
+        removed++;
+      }
+    }
+    if (removed) log('library', `removed ${removed} leftover Live Photo video copies`);
+  } catch (err) {
+    logError('library', 'leftover Live Photo sweep failed', err);
+  }
 }
 
 function rowToAsset(row: any): LibraryAsset {
