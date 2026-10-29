@@ -116,14 +116,14 @@ async function request<T>(session: Session, path: string, init: RequestInit = {}
     res = await doFetch(csrfToken);
   }
 
+  // Unapproved accounts are redirected to an HTML page (a 200, or an error
+  // status for a JSON Accept); say so rather than surfacing its body.
+  if (res.url.includes('/users/pending')) {
+    throw new ApiError(403, 'Your account is waiting for approval by a family admin');
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new ApiError(res.status, text || `Request failed (${res.status})`);
-  }
-  // Unapproved accounts are redirected to an HTML page that fetch follows to
-  // a 200; say so rather than surfacing a JSON parse error.
-  if (res.url.includes('/users/pending')) {
-    throw new ApiError(403, 'Your account is waiting for approval by a family admin');
   }
   try {
     return (await res.json()) as T;
