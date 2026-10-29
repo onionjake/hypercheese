@@ -61,7 +61,9 @@ async function originalMtimes(assets: ImagePickerAsset[]): Promise<(number | nul
     assets.map(async (asset) => {
       if (!asset.assetId) return null;
       try {
-        const info = await assetInfo(asset.assetId);
+        // Only the dates are needed: don't pull the original (or a Live
+        // Photo's video) down from iCloud again just to read them.
+        const info = await assetInfo(asset.assetId, { shouldDownloadFromNetwork: false });
         // Same fallback logic as the sync flows (assetMtime) so every flow
         // sends the identical mtime for the same asset.
         return assetMtime(info) || null;
