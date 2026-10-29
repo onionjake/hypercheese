@@ -596,8 +596,8 @@ function onUploadProgress(bytesSent: number, bytesTotal: number): void {
 // land in the catalog the next account has claimed.
 let drainEpoch = 0;
 
-// `retrySoon`: a failure that isn't evidence against the file (the transfer
-// was cut off), so automatic retries don't back off from it.
+// `retrySoon`: a failure that may not be the file's fault (the transfer was
+// cut off), so automatic retries back off only if it happens again.
 async function settle(
   item: QueueItem,
   status: 'done' | 'exists' | 'failed',
@@ -624,7 +624,7 @@ async function settle(
       await markStatus(item.assetId, 'synced', null, version);
     } else if (item.source === 'backup') {
       await markStatus(item.assetId, 'failed', item.error, version, {
-        backoff: !opts.retrySoon,
+        backoff: opts.retrySoon ? 'repeat' : 'always',
       });
     }
   }
@@ -800,7 +800,7 @@ async function drain(trigger: string, sess: Session): Promise<void> {
         logError('queue', `failed ${item.filename}`, err);
         // A cut-off transfer while still online may be a blip (or a server
         // restart) as easily as this file: fail it so the queue moves on,
-        // but let the next auto-retry try it again.
+        // and let the next auto-retry try it once more before backing off.
         await settle(item, 'failed', String(err), { retrySoon: interrupted });
       }
     }

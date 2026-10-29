@@ -409,35 +409,33 @@ export async function excludeSelected(): Promise<string[]> {
 
 // With `mtime`, only touches the row if the catalog still has that version:
 // an upload of the old version of a photo edited mid-upload must not mark
-// the new version backed up. `backoff: false` records a failure that
-// automatic retries may pick up again right away (a dropped transfer).
+// the new version backed up. `backoff: 'repeat'` is for a failure that may
+// be a blip (a dropped transfer): automatic retries try again right away the
+// first time, and only back off if the previous attempt had failed too — so
+// a file that can never get through isn't re-sent on every retry.
 export async function markStatus(
   id: string,
   status: AssetStatus,
   error: string | null = null,
   mtime?: number,
-  opts: { backoff?: boolean } = {}
+  opts: { backoff?: 'always' | 'repeat' } = {}
 ): Promise<void> {
   const db = await openDb();
-  const failedAt = status === 'failed' && (opts.backoff ?? true) ? Date.now() : null;
-  if (mtime === undefined) {
-    await db.runAsync(
-      'UPDATE assets SET status = ?, error = ?, failed_at = ? WHERE id = ?',
-      status,
-      error,
-      failedAt,
-      id
-    );
-  } else {
-    await db.runAsync(
-      'UPDATE assets SET status = ?, error = ?, failed_at = ? WHERE id = ? AND mtime = ?',
-      status,
-      error,
-      failedAt,
-      id,
-      mtime
-    );
-  }
+  const now = status === 'failed' ? Date.now() : null;
+  // The right-hand side sees the row's previous status.
+  const failedAt =
+    status === 'failed' && opts.backoff === 'repeat'
+      ? "CASE WHEN status = 'failed' THEN ? ELSE NULL END"
+      : '?';
+  await db.runAsync(
+    `UPDATE assets SET status = ?, error = ?, failed_at = ${failedAt}
+     WHERE id = ?${mtime === undefined ? '' : ' AND mtime = ?'}`,
+    status,
+    error,
+    now,
+    id,
+    ...(mtime === undefined ? [] : [mtime])
+  );
 }
 
 export async function setSize(id: string, size: number): Promise<void> {
