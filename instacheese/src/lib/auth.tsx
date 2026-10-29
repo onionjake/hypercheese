@@ -182,7 +182,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     async function persist(newSession: Session, newUser: CurrentUser | null) {
       // Before the session goes live (and the upload queue starts): a
-      // different account must not inherit this device's backup marks.
+      // different account must not inherit this device's backup marks — or
+      // queue rows a sign-out killed midway left behind. Signing in always
+      // starts from signed out, where the queue should already be empty.
+      await clearUploadQueue();
       await claimCatalog(accountKey(baseUrl, username));
       clearTagCache();
       await writeStoredSession({ ...newSession, user: newUser });
