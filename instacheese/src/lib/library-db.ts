@@ -121,28 +121,40 @@ export async function assetInfo(
 // iOS slow-motion videos only: the ORIGINAL high-frame-rate file, through
 // the newer media-library API (it asks PhotoKit for the original version).
 // The legacy lookup can only re-encode the clip — minutes of encoding and a
-// different file every time. Other assets keep the legacy lookup, which
-// returns their current (edited) version. Null when it doesn't apply or
-// can't help (not iOS, not slow-mo, an iCloud-only original, the API
-// unavailable), so callers fall back to the legacy lookup.
-export async function slowMotionOriginalUri(assetId: string): Promise<string | null> {
-  if (Platform.OS !== 'ios') return null;
+// different file every time — so a slow-motion video never falls back to
+// it. Everything else keeps the legacy lookup, which returns the current
+// (edited) version.
+export type SlowMotionLookup =
+  | { kind: 'not-slow-motion' }
+  | { kind: 'original'; uri: string }
+  | { kind: 'unavailable' }; // e.g. an iCloud-only original (no download here)
+
+export async function slowMotionOriginal(assetId: string): Promise<SlowMotionLookup> {
+  if (Platform.OS !== 'ios') return { kind: 'not-slow-motion' };
+  // The newer API's ids are 'ph://<localIdentifier>' (its native constructor
+  // strips that prefix); the legacy API hands out the bare identifier.
+  const asset = new PhotoKitAsset(assetId.startsWith('ph://') ? assetId : `ph://${assetId}`);
   try {
-    const asset = new PhotoKitAsset(assetId);
-    if ((await asset.getMediaType()) !== MediaType.VIDEO) return null;
-    if (!(await asset.getMediaSubtypes()).includes(MediaSubtype.HIGH_FRAME_RATE)) return null;
+    if ((await asset.getMediaType()) !== MediaType.VIDEO) return { kind: 'not-slow-motion' };
+    if (!(await asset.getMediaSubtypes()).includes(MediaSubtype.HIGH_FRAME_RATE)) {
+      return { kind: 'not-slow-motion' };
+    }
+  } catch {
+    // Asset gone, or the newer API unavailable: leave it to the legacy path.
+    return { kind: 'not-slow-motion' };
+  }
+  try {
     const uri = await asset.getUri();
-    if (!uri) return null;
     const fileUri = uri.startsWith('file://') ? uri : `file://${uri}`;
     // Should not happen with the original version requested; if it does,
     // it's an unstable re-encode, not something to back up.
     if (fileUri.includes('slowMoVideo-')) {
       deleteFile(fileUri);
-      return null;
+      return { kind: 'unavailable' };
     }
-    return fileUri;
+    return { kind: 'original', uri: fileUri };
   } catch {
-    return null;
+    return { kind: 'unavailable' };
   }
 }
 
