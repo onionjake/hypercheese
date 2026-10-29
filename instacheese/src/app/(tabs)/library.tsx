@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { CompatNotice } from '@/components/compat-notice';
 import { useAuth } from '@/lib/auth';
 import {
   excludeSelected,
@@ -400,6 +401,7 @@ export default function LibraryScreen() {
           )}
         </Pressable>
       </View>
+      {canWrite ? <CompatNotice /> : null}
 
       {!canWrite ? (
         <View style={styles.center}>
