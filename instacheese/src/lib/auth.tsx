@@ -53,9 +53,10 @@ function accountKey(baseUrl: string, username: string): string {
 // The background upload task reads the session while the phone is usually
 // locked (iOS runs BGProcessingTasks overnight), and the default
 // whenUnlocked keychain class refuses that. An existing item keeps its old
-// class on update, so delete before writing.
+// class on update, so delete before writing. (iOS only: Android has no
+// keychain classes, and a failed write after a delete would sign the user out.)
 async function writeStoredSession(value: StoredSession): Promise<void> {
-  await SecureStore.deleteItemAsync(STORAGE_KEY).catch(() => {});
+  if (Platform.OS === 'ios') await SecureStore.deleteItemAsync(STORAGE_KEY).catch(() => {});
   await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(value), {
     keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
   });

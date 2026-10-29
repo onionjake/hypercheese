@@ -409,15 +409,17 @@ export async function excludeSelected(): Promise<string[]> {
 
 // With `mtime`, only touches the row if the catalog still has that version:
 // an upload of the old version of a photo edited mid-upload must not mark
-// the new version backed up.
+// the new version backed up. `backoff: false` records a failure that
+// automatic retries may pick up again right away (a dropped transfer).
 export async function markStatus(
   id: string,
   status: AssetStatus,
   error: string | null = null,
-  mtime?: number
+  mtime?: number,
+  opts: { backoff?: boolean } = {}
 ): Promise<void> {
   const db = await openDb();
-  const failedAt = status === 'failed' ? Date.now() : null;
+  const failedAt = status === 'failed' && (opts.backoff ?? true) ? Date.now() : null;
   if (mtime === undefined) {
     await db.runAsync(
       'UPDATE assets SET status = ?, error = ?, failed_at = ? WHERE id = ?',

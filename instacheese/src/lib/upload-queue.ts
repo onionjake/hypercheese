@@ -392,10 +392,10 @@ export function enqueue(
 // history, so only deliberate re-verification flows should pass it — routine
 // "Back up" presses and auto-retries must stay O(pending).
 export async function enqueueBackupPending(
-  opts: { includeSynced?: boolean; failedRetryAfterMs?: number } = {}
+  opts: { includeSynced?: boolean; failedRetryAfterMs?: number; epoch?: number } = {}
 ): Promise<number> {
   const started = Date.now();
-  const startedIn = epoch;
+  const startedIn = opts.epoch ?? epoch;
   const assets = await markedForSync(opts);
   if (assets.length === 0) return 0;
   // Persist this line before the enqueue: if the process dies in there, the
@@ -591,7 +591,19 @@ function onUploadProgress(bytesSent: number, bytesTotal: number): void {
 // backup-selected items — a failed picker share or sync upload of a photo the
 // user never selected shouldn't show up in the Backup screen's Failed count
 // (which it couldn't retry anyway).
-async function settle(item: QueueItem, status: 'done' | 'exists' | 'failed', error?: string) {
+// The epoch the running drain started in. Its in-flight file can finish
+// after a sign-out; that outcome belongs to the previous account and must not
+// land in the catalog the next account has claimed.
+let drainEpoch = 0;
+
+// `retrySoon`: a failure that isn't evidence against the file (the transfer
+// was cut off), so automatic retries don't back off from it.
+async function settle(
+  item: QueueItem,
+  status: 'done' | 'exists' | 'failed',
+  error?: string,
+  opts: { retrySoon?: boolean } = {}
+) {
   item.error = error ?? null;
   const db = await openDb();
   await db.runAsync(
@@ -602,7 +614,7 @@ async function settle(item: QueueItem, status: 'done' | 'exists' | 'failed', err
     item.key
   );
   item.status = status;
-  if (item.assetId) {
+  if (item.assetId && drainEpoch === epoch) {
     // Guarded by mtime so an upload of a photo's old version (edited
     // mid-upload) can't mark the new one backed up. Picker items skip the
     // guard: their mtime falls back to the temp copy's when the original's
@@ -611,7 +623,9 @@ async function settle(item: QueueItem, status: 'done' | 'exists' | 'failed', err
     if (status !== 'failed') {
       await markStatus(item.assetId, 'synced', null, version);
     } else if (item.source === 'backup') {
-      await markStatus(item.assetId, 'failed', item.error, version);
+      await markStatus(item.assetId, 'failed', item.error, version, {
+        backoff: !opts.retrySoon,
+      });
     }
   }
   // Track counts in memory rather than re-aggregating the table per item;
@@ -775,7 +789,8 @@ async function drain(trigger: string, sess: Session): Promise<void> {
           logError('queue', `network error on ${item.filename}, pausing queue`, err);
           throw new Paused(`Connection problem: ${err.message}`);
         }
-        if (err instanceof UploadInterrupted) {
+        const interrupted = err instanceof UploadInterrupted;
+        if (interrupted) {
           const permission = await uploadAllowed().catch(() => null);
           if (permission && !permission.allowed) {
             logError('queue', `upload of ${item.filename} interrupted, pausing queue`, err);
@@ -783,7 +798,10 @@ async function drain(trigger: string, sess: Session): Promise<void> {
           }
         }
         logError('queue', `failed ${item.filename}`, err);
-        await settle(item, 'failed', String(err));
+        // A cut-off transfer while still online may be a blip (or a server
+        // restart) as easily as this file: fail it so the queue moves on,
+        // but let the next auto-retry try it again.
+        await settle(item, 'failed', String(err), { retrySoon: interrupted });
       }
     }
   }
@@ -805,6 +823,7 @@ export function kick(trigger: string): Promise<void> {
   stopRequested = false;
   stoppedByUser = false;
   pausedReason = null;
+  drainEpoch = epoch;
   runPromise = drain(trigger, sess)
     .catch((err) => {
       if (err instanceof Paused) {
@@ -862,7 +881,11 @@ export function startAutoRetry(s: Session): () => void {
   session = s;
 
   const tryKick = async (trigger: string) => {
+    // Pinned at entry: a sign-out during the awaits below must make the
+    // enqueue a no-op rather than re-insert the old account's marks.
+    const startedIn = epoch;
     try {
+      if (!session) return;
       // A drain winding down (e.g. stopped when the background window
       // expired) would otherwise swallow this retry until the next interval.
       if (runPromise) {
@@ -874,8 +897,9 @@ export function startAutoRetry(s: Session): () => void {
       // something is actually marked for backup but not uploaded.
       const catalog = await libraryCounts();
       if (catalog.pending > 0) {
-        await enqueueBackupPending({ failedRetryAfterMs: FAILED_RETRY_MS });
+        await enqueueBackupPending({ failedRetryAfterMs: FAILED_RETRY_MS, epoch: startedIn });
       }
+      if (startedIn !== epoch) return;
       await refreshCounts();
       if (counts.remaining > 0) kick(`auto:${trigger}`);
     } catch (err) {
@@ -906,8 +930,9 @@ export function startAutoRetry(s: Session): () => void {
     unNetwork();
     // Stop and drop the credentials so nothing else can kick a drain with
     // them. (A new sign-in calls startAutoRetry again; sign-out follows up
-    // with clearAll().)
-    stop();
+    // with clearAll().) Not a user Stop: a quick re-sign-in's startup
+    // retry should still resume once this drain winds down.
+    stop({ byUser: false });
     session = null;
   };
 }
