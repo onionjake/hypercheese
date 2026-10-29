@@ -95,7 +95,12 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
 
   const run = async () => {
     await ensureNetwork();
-    const permission = await MediaLibrary.requestPermissionsAsync(false, MEDIA_PERMISSIONS);
+    // Check before requesting: with partial access a request re-opens the
+    // photo selection dialog on every run.
+    let permission = await MediaLibrary.getPermissionsAsync(false, MEDIA_PERMISSIONS);
+    if (!permission.granted && permission.canAskAgain) {
+      permission = await MediaLibrary.requestPermissionsAsync(false, MEDIA_PERMISSIONS);
+    }
     if (!permission.granted) {
       status.phase = 'error';
       status.lastError = 'Photo library permission is required to sync';
