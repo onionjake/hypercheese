@@ -1114,6 +1114,15 @@ export function kick(trigger: string): Promise<void> {
   return runPromise;
 }
 
+// Resolves once no drain is running. A kick that lands while one runs
+// returns THAT drain's promise, and the drain it queues up (pendingKick)
+// starts only as the old one ends — so awaiting kick() alone can return
+// while the real work has just begun. The background task must outlast it:
+// the OS freezes the process as soon as the task resolves.
+export async function waitForIdle(): Promise<void> {
+  while (runPromise) await runPromise;
+}
+
 // Stop after the current file; everything else stays queued (auto-retry or
 // the next manual kick resumes it). `byUser: false` is for the OS ending a
 // background window — an auto-retry arriving meanwhile resumes right after.
