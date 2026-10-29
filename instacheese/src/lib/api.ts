@@ -95,7 +95,14 @@ async function request<T>(session: Session, path: string, init: RequestInit = {}
     if (typeof init.body === 'string' && !headers['Content-Type']) {
       headers['Content-Type'] = 'application/json';
     }
-    return fetchWithTimeout(session.baseUrl + path, { ...init, credentials: 'include', headers });
+    // Token mode never sends cookies: a leftover browser session would
+    // otherwise answer as whoever it belongs to, and a sign-in check could
+    // mistake that for the new token working.
+    return fetchWithTimeout(session.baseUrl + path, {
+      ...init,
+      credentials: session.mode === 'token' ? 'omit' : 'include',
+      headers,
+    });
   };
 
   const needsCsrf = session.mode === 'session' && method !== 'GET';

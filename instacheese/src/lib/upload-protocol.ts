@@ -75,6 +75,12 @@ export class UploadInterrupted extends Error {}
 // so the queue fails the file but schedules an automatic retry.
 export class ServerError extends Error {}
 
+// The file no longer matches the size/hash recorded for it (the server
+// rejected a size or SHA256 mismatch, or the file ended early) — e.g. the
+// photo library handed back a different rendition of the same asset. The
+// cached hash is already forgotten; the queue forgets the size and retries.
+export class StaleFileError extends Error {}
+
 // No request may hang the queue: React Native's Android client has no
 // default timeout, so a stalled connection would block the drain forever.
 const REQUEST_TIMEOUT_MS = 2 * 60 * 1000;
@@ -193,7 +199,7 @@ export async function sha256OfFile(uri: string, size?: number): Promise<string> 
       let read = 0;
       while (read < size) {
         const chunk = handle.readBytes(Math.min(HASH_CHUNK_SIZE, size - read));
-        if (chunk.length === 0) throw new Error('File ended before its expected size');
+        if (chunk.length === 0) throw new StaleFileError('File ended before its expected size');
         hash.update(chunk);
         read += chunk.length;
         // readBytes is synchronous; let the event loop breathe between chunks.
@@ -235,6 +241,7 @@ async function loadShaCache(): Promise<Record<string, string>> {
 // debounced. Losing the last few entries to a crash only costs a rehash.
 const SHA_CACHE_SAVE_MS = 10_000;
 let shaCacheTimer: ReturnType<typeof setTimeout> | null = null;
+let shaCacheDirty = false;
 
 function scheduleShaCacheSave(): void {
   if (shaCacheTimer) return;
@@ -250,12 +257,22 @@ export async function flushShaCache(): Promise<void> {
     clearTimeout(shaCacheTimer);
     shaCacheTimer = null;
   }
-  if (!shaCache) return;
+  if (!shaCache || !shaCacheDirty) return;
+  shaCacheDirty = false;
   try {
     await LegacyFileSystem.writeAsStringAsync(SHA_CACHE_URI, JSON.stringify(shaCache));
   } catch {
     // cache is an optimization only
   }
+}
+
+export async function forgetCachedSha256(cacheKey: string | null): Promise<void> {
+  if (!cacheKey) return;
+  const cache = await loadShaCache();
+  delete cache[cacheKey];
+  delete cache[`${cacheKey}:v2`];
+  shaCacheDirty = true;
+  scheduleShaCacheSave();
 }
 
 // cacheKey must change whenever the file content could have changed
@@ -274,6 +291,7 @@ export async function cachedSha256OfFile(
   const sha = await sha256OfFile(uri, size);
   if (cache && key) {
     cache[key] = sha;
+    shaCacheDirty = true;
     scheduleShaCacheSave();
   }
   return sha;
@@ -375,6 +393,10 @@ export async function hashAndUpload(
   if (result.status < 200 || result.status >= 300) {
     log('upload', `PUT ${file.path} failed (${result.status}): ${(result.body || '').slice(0, 500)}`);
     if (result.status >= 500) throw new ServerError(result.body || `Upload failed (${result.status})`);
+    if (result.status === 400 && /Size mismatch|SHA256 mismatch/.test(result.body || '')) {
+      await forgetCachedSha256(file.cacheKey);
+      throw new StaleFileError(result.body);
+    }
     throw new Error(result.body || `Upload failed (${result.status})`);
   }
   log('upload', `uploaded ${file.path} (${file.size} bytes)`);

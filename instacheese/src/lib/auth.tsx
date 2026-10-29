@@ -208,11 +208,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Devise skips the password check when the jar still holds a session;
-    // an email that /files/auth already refused must not ride on a leftover
-    // cookie from someone else.
-    if (!token && username.includes('@') && !cookieTrusted) {
-      throw new Error("Couldn't sign in with an email right now — try your username");
+    // Devise skips the password check when the jar still holds a session,
+    // so the browser-style sign-in below would quietly become whoever a
+    // leftover cookie belongs to. Only go ahead once the earlier session is
+    // known to be gone.
+    if (!cookieTrusted) {
+      throw new Error("Couldn't reach the server to sign in — check your connection and try again");
     }
 
     // Fallback for servers without the API token support: Devise session.

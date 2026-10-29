@@ -75,6 +75,10 @@ async function openDb(): Promise<SQLite.SQLiteDatabase> {
       if (!cols.some((c) => c.name === 'failed_at')) {
         await db.execAsync('ALTER TABLE assets ADD COLUMN failed_at INTEGER');
       }
+      // Consecutive failed upload attempts, capping automatic retries.
+      if (!cols.some((c) => c.name === 'failures')) {
+        await db.execAsync('ALTER TABLE assets ADD COLUMN failures INTEGER NOT NULL DEFAULT 0');
+      }
       // Scan generation that first failed to see this asset (see runScan).
       if (!cols.some((c) => c.name === 'missing_since')) {
         await db.execAsync('ALTER TABLE assets ADD COLUMN missing_since INTEGER');
@@ -447,7 +451,7 @@ export async function setAllSelected(selected: boolean): Promise<void> {
 }
 
 const MARK_FOR_UPLOAD_SET = `
-  SET selected = 0, excluded = 0, error = NULL,
+  SET selected = 0, excluded = 0, error = NULL, failures = 0,
       status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'pending' END`;
 
 // "Back up" commits the working selection: every checked photo becomes
@@ -512,7 +516,7 @@ export async function resetFailures(ids: string[]): Promise<void> {
   const db = await openDb();
   for (const batch of chunk(ids, 400)) {
     await db.runAsync(
-      `UPDATE assets SET status = 'pending', failed_at = NULL
+      `UPDATE assets SET status = 'pending', failed_at = NULL, failures = 0
        WHERE status = 'failed' AND id IN (${batch.map(() => '?').join(',')})`,
       ...batch
     );
@@ -547,7 +551,8 @@ export async function markStatus(
       ? "CASE WHEN status = 'failed' THEN ? ELSE NULL END"
       : '?';
   await db.runAsync(
-    `UPDATE assets SET status = ?, error = ?, failed_at = ${failedAt}
+    `UPDATE assets SET status = ?, error = ?, failed_at = ${failedAt},
+       failures = ${status === 'failed' ? 'failures + 1' : '0'}
      WHERE id = ?${mtime === undefined ? '' : ' AND mtime = ?'}`,
     status,
     error,
@@ -557,7 +562,7 @@ export async function markStatus(
   );
 }
 
-export async function setSize(id: string, size: number): Promise<void> {
+export async function setSize(id: string, size: number | null): Promise<void> {
   const db = await openDb();
   await db.runAsync('UPDATE assets SET size = ? WHERE id = ?', size, id);
 }
@@ -569,16 +574,23 @@ export async function setSize(id: string, size: number): Promise<void> {
 // assets still awaiting upload are returned; includeSynced also returns the
 // (much larger, ever-growing) already-synced set, so only re-verification
 // flows should ask for it.
+const MAX_AUTO_FAILURES = 5;
+
 // failedRetryAfterMs (automatic retries) skips failures more recent than that.
 export async function markedForSync(
   opts: { includeSynced?: boolean; failedRetryAfterMs?: number } = {}
 ): Promise<LibraryAsset[]> {
   const db = await openDb();
   const statuses = opts.includeSynced ? "'pending', 'failed', 'synced'" : "'pending', 'failed'";
+  // Automatic retries also give up on a photo that has failed
+  // MAX_AUTO_FAILURES times in a row (a file the server always rejects would
+  // otherwise be re-sent in full every backoff period forever); Back up and
+  // Retry still try it.
   const recentFailure =
     opts.failedRetryAfterMs === undefined
       ? ''
-      : "AND NOT (status = 'failed' AND failed_at IS NOT NULL AND failed_at > ?)";
+      : `AND NOT (status = 'failed' AND (failures >= ${MAX_AUTO_FAILURES}
+           OR (failed_at IS NOT NULL AND failed_at > ?)))`;
   const rows = await db.getAllAsync(
     `SELECT * FROM assets
      WHERE supported = 1 AND excluded = 0 AND ${PRESENT} AND status IN (${statuses}) ${recentFailure}
