@@ -168,10 +168,10 @@ export async function assetDates(
   if (Platform.OS === 'ios') {
     try {
       const asset = new PhotoKitAsset(assetId.startsWith('ph://') ? assetId : `ph://${assetId}`);
-      const [modificationTime, creationTime] = await Promise.all([
-        asset.getModificationTime(),
-        asset.getCreationTime(),
-      ]);
+      // One after the other: concurrent calls on one native Asset race on
+      // its lazily-loaded PHAsset.
+      const modificationTime = await asset.getModificationTime();
+      const creationTime = await asset.getCreationTime();
       return { modificationTime, creationTime };
     } catch {
       // fall back to the legacy lookup
