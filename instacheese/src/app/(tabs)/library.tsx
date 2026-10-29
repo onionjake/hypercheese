@@ -70,6 +70,11 @@ export default function LibraryScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [summary, setSummary] = useState<queue.QueueSummary>(queue.getSummary());
   const endReached = useRef(false);
+  // The latest filter and the latest load request, so a slow load (or the
+  // scan that preceded it) can't land on top of a newer filter's list.
+  const filterRef = useRef(filter);
+  const loadGeneration = useRef(0);
+  const pageLoading = useRef(false);
   const countsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const canWrite = !!user?.can_write;
@@ -94,14 +99,31 @@ export default function LibraryScreen() {
     }, 500);
   }, [refreshCounts]);
 
+  // Always loads for the current filter. A reset supersedes any load in
+  // flight; an append is skipped while another load is running (the end of
+  // the list fires repeatedly) and dropped if a reset overtook it.
   const loadPage = useCallback(
-    async (reset: boolean, activeFilter: AssetFilter) => {
-      const offset = reset ? 0 : assets.length;
-      const page = await listAssets(activeFilter, PAGE, offset);
-      endReached.current = page.length < PAGE;
-      setAssets((prev) => (reset ? page : [...prev, ...page]));
+    async (reset: boolean) => {
+      if (!reset && pageLoading.current) return;
+      const generation = ++loadGeneration.current;
+      pageLoading.current = true;
+      try {
+        const last = reset ? undefined : assets[assets.length - 1];
+        const page = await listAssets(filterRef.current, PAGE, last);
+        if (generation !== loadGeneration.current) return;
+        endReached.current = page.length < PAGE;
+        setAssets((prev) => {
+          if (reset) return page;
+          // A row can reappear below the cursor after an edit moved it; never
+          // render the same asset twice.
+          const seen = new Set(prev.map((a) => a.id));
+          return [...prev, ...page.filter((a) => !seen.has(a.id))];
+        });
+      } finally {
+        if (generation === loadGeneration.current) pageLoading.current = false;
+      }
     },
-    [assets.length]
+    [assets]
   );
 
   const rescan = useCallback(async () => {
@@ -110,14 +132,14 @@ export default function LibraryScreen() {
     setLoadError(null);
     try {
       await refreshFromLibrary(setScanCount);
-      await loadPage(true, filter);
+      await loadPage(true);
       await refreshCounts();
     } catch (err) {
       setLoadError(String(err instanceof Error ? err.message : err));
     } finally {
       setScanning(false);
     }
-  }, [scanning, filter, loadPage, refreshCounts]);
+  }, [scanning, loadPage, refreshCounts]);
 
   // First open: scan the library into the catalog.
   useEffect(() => {
@@ -165,9 +187,10 @@ export default function LibraryScreen() {
 
   const changeFilter = (next: AssetFilter) => {
     setFilter(next);
+    filterRef.current = next;
     setAssets([]);
     endReached.current = false;
-    loadPage(true, next);
+    loadPage(true);
   };
 
   // Tapping only toggles working-set membership — the decision happens when a
@@ -186,7 +209,7 @@ export default function LibraryScreen() {
   // upload" (or use the queue screen) to cancel a queued upload.
   const selectAll = async (selected: boolean) => {
     await setAllSelected(selected);
-    await loadPage(true, filter);
+    await loadPage(true);
     await refreshCounts();
   };
 
@@ -204,7 +227,7 @@ export default function LibraryScreen() {
     await markSelectedForUpload();
     await queue.enqueueBackupPending();
     queue.kick('backup');
-    await loadPage(true, filter);
+    await loadPage(true);
     await refreshCounts();
   };
 
@@ -247,7 +270,7 @@ export default function LibraryScreen() {
           onPress: async () => {
             const ids = await excludeSelected();
             await queue.removeQueued(ids.map(queue.assetKey), 'backup');
-            await loadPage(true, filter);
+            await loadPage(true);
             await refreshCounts();
           },
         },
@@ -408,7 +431,7 @@ export default function LibraryScreen() {
             renderItem={cell}
             onEndReachedThreshold={2}
             onEndReached={() => {
-              if (!endReached.current && !scanning) loadPage(false, filter);
+              if (!endReached.current && !scanning) loadPage(false);
             }}
             ListEmptyComponent={
               <View style={styles.center}>

@@ -59,6 +59,10 @@ async function openDb(): Promise<SQLite.SQLiteDatabase> {
         CREATE INDEX IF NOT EXISTS idx_assets_creation ON assets (creation_time DESC);
         CREATE INDEX IF NOT EXISTS idx_assets_selected ON assets (selected);
         CREATE INDEX IF NOT EXISTS idx_assets_status ON assets (status);
+        CREATE TABLE IF NOT EXISTS meta (
+          key TEXT PRIMARY KEY NOT NULL,
+          value TEXT NOT NULL
+        );
       `);
       // Catalogs created before the "won't upload" feature lack the column.
       const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(assets)');
@@ -227,18 +231,32 @@ const FILTER_WHERE: Record<AssetFilter, string> = {
   excluded: 'excluded = 1',
 };
 
+// Keyset-paged: `after` is the last asset already shown, and the next page
+// starts strictly below it in (creation_time, id) order. An OFFSET would
+// drift whenever the filtered set changes between pages — on-screen edits
+// (Won't upload in the Unmarked view) and queue settles (Backed up / Failed)
+// do that constantly, skipping or repeating photos.
 export async function listAssets(
   filter: AssetFilter,
   limit: number,
-  offset: number
+  after?: Pick<LibraryAsset, 'creationTime' | 'id'>
 ): Promise<LibraryAsset[]> {
   const db = await openDb();
-  const rows = await db.getAllAsync(
-    `SELECT * FROM assets WHERE ${FILTER_WHERE[filter]}
-     ORDER BY creation_time DESC, id DESC LIMIT ? OFFSET ?`,
-    limit,
-    offset
-  );
+  const rows = after
+    ? await db.getAllAsync(
+        `SELECT * FROM assets WHERE (${FILTER_WHERE[filter]})
+           AND (creation_time < ? OR (creation_time = ? AND id < ?))
+         ORDER BY creation_time DESC, id DESC LIMIT ?`,
+        after.creationTime,
+        after.creationTime,
+        after.id,
+        limit
+      )
+    : await db.getAllAsync(
+        `SELECT * FROM assets WHERE ${FILTER_WHERE[filter]}
+         ORDER BY creation_time DESC, id DESC LIMIT ?`,
+        limit
+      );
   return rows.map(rowToAsset);
 }
 
@@ -396,4 +414,28 @@ export async function markedForSync(
      ORDER BY creation_time DESC, id DESC`
   );
   return rows.map(rowToAsset);
+}
+
+// Backup decisions belong to the account that made them: a 'pending' mark
+// means "upload this to MY account", and 'synced' only says what one server
+// has. Called on every sign-in before the upload queue starts; when a
+// different account (server + username) signs in on this device, its
+// predecessor's marks are dropped so auto-retry can't upload them into the
+// new account. "Won't upload" survives — it only ever prevents uploads. A
+// catalog from before this existed is adopted by whoever signs in next.
+export async function claimCatalog(account: string): Promise<void> {
+  const db = await openDb();
+  const row = await db.getFirstAsync<{ value: string }>(
+    "SELECT value FROM meta WHERE key = 'account'"
+  );
+  if (row && row.value !== account) {
+    const reset = await db.runAsync(
+      "UPDATE assets SET status = 'none', error = NULL, selected = 0 WHERE status != 'none' OR selected = 1"
+    );
+    log('library', `catalog claimed by a different account; reset ${reset.changes} marks`);
+  }
+  await db.runAsync(
+    "INSERT INTO meta (key, value) VALUES ('account', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    account
+  );
 }

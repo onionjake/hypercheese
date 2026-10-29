@@ -46,8 +46,12 @@ function extractCsrfToken(html: string): string | null {
   return input ? input[1] : null;
 }
 
-async function fetchCsrfToken(baseUrl: string, path = '/'): Promise<string> {
-  const res = await fetch(baseUrl + path, { credentials: 'include' });
+async function fetchCsrfToken(
+  baseUrl: string,
+  path = '/',
+  signal?: AbortSignal
+): Promise<string> {
+  const res = await fetch(baseUrl + path, { credentials: 'include', signal });
   const html = await res.text();
   const token = extractCsrfToken(html);
   if (!token) throw new ApiError(res.status, 'Could not find CSRF token');
@@ -84,8 +88,11 @@ async function request<T>(session: Session, path: string, init: RequestInit = {}
   let res = await doFetch(csrfToken);
 
   // A failed write in session mode is usually a stale CSRF token — refresh
-  // it once and retry.
-  if (!res.ok && needsCsrf) {
+  // it once and retry. Rails rejects a bad token before the action runs
+  // (this server raises, so it's a 500; stock Rails says 422), so those are
+  // safe to replay. A gateway error may have reached a committed write, and
+  // replaying a toggle or comment would undo or duplicate it.
+  if (needsCsrf && (res.status === 422 || res.status === 500)) {
     csrfToken = await fetchCsrfToken(session.baseUrl);
     res = await doFetch(csrfToken);
   }
@@ -94,7 +101,16 @@ async function request<T>(session: Session, path: string, init: RequestInit = {}
     const text = await res.text().catch(() => '');
     throw new ApiError(res.status, text || `Request failed (${res.status})`);
   }
-  return (await res.json()) as T;
+  // Unapproved accounts are redirected to an HTML page that fetch follows to
+  // a 200; say so rather than surfacing a JSON parse error.
+  if (res.url.includes('/users/pending')) {
+    throw new ApiError(403, 'Your account is waiting for approval by a family admin');
+  }
+  try {
+    return (await res.json()) as T;
+  } catch {
+    throw new ApiError(res.status, 'Unexpected response from the server');
+  }
 }
 
 export async function tokenLogin(
@@ -106,6 +122,8 @@ export async function tokenLogin(
 ): Promise<string> {
   const res = await fetch(`${baseUrl}/files/auth`, {
     method: 'POST',
+    // The server prefers a cookie session's user over these credentials.
+    credentials: 'omit',
     headers: {
       'Content-Type': 'application/json',
       'X-API-Version': '1.0',
@@ -157,17 +175,24 @@ export async function sessionLogin(
   // caller confirms the session by fetching the current user.
 }
 
+// Ends any browser session (and remember-me cookie) for this server. Best
+// effort and bounded: sign-in and sign-out both wait on it, and a dead
+// network must not hang either.
 export async function sessionLogout(session: Session): Promise<void> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), 10_000);
   try {
-    const csrfToken = await fetchCsrfToken(session.baseUrl);
+    const csrfToken = await fetchCsrfToken(session.baseUrl, '/', abort.signal);
     await fetch(`${session.baseUrl}/users/sign_out`, {
       method: 'DELETE',
       credentials: 'include',
       headers: { 'X-CSRF-Token': csrfToken },
+      signal: abort.signal,
     });
   } catch {
     // Best effort — local state is cleared regardless.
   } finally {
+    clearTimeout(timer);
     csrfTokens.delete(session.baseUrl);
   }
 }

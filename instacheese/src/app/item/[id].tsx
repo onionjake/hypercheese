@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/build/react-navigation/elements';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -135,21 +135,29 @@ export default function ItemScreen() {
   const [commentText, setCommentText] = useState('');
   const [posting, setPosting] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  const togglesInFlight = useRef(new Set<string>());
 
   const canWrite = !!user?.can_write;
 
   const load = useCallback(async () => {
     if (!session) return;
     setError(null);
-    try {
-      const [freshItem, freshDetails] = await Promise.all([
-        api.fetchItem(session, id),
-        api.fetchItemDetails(session, id),
-      ]);
-      setItem(freshItem);
-      setDetails(freshDetails);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load this item');
+    // Settled independently: a /details failure (the server can 500 on some
+    // undated photos) must not throw away the item and hide the action row.
+    const [freshItem, freshDetails] = await Promise.allSettled([
+      api.fetchItem(session, id),
+      api.fetchItemDetails(session, id),
+    ]);
+    if (freshItem.status === 'fulfilled') setItem(freshItem.value);
+    if (freshDetails.status === 'fulfilled') setDetails(freshDetails.value);
+    const failure =
+      freshItem.status === 'rejected'
+        ? freshItem.reason
+        : freshDetails.status === 'rejected'
+          ? freshDetails.reason
+          : null;
+    if (failure) {
+      setError(failure instanceof Error ? failure.message : 'Could not load this item');
     }
   }, [session, id]);
 
@@ -162,12 +170,22 @@ export default function ItemScreen() {
     call: (s: api.Session, id: number) => Promise<FeedItem>
   ) => {
     if (!session || !item) return;
-    const previous = item;
-    setItem({ ...item, [field]: !item[field] });
+    // Each POST flips server state; a second tap before the first answers
+    // would race it.
+    if (togglesInFlight.current.has(field)) return;
+    togglesInFlight.current.add(field);
+    const before = item[field];
+    const patchField = (value: boolean) =>
+      setItem((prev) => (prev ? { ...prev, [field]: value } : prev));
+    patchField(!before);
     try {
-      setItem(await call(session, item.id));
+      // Only this field: a concurrent toggle of the other one keeps its value.
+      const updated = await call(session, item.id);
+      patchField(updated[field]);
     } catch {
-      setItem(previous);
+      patchField(before);
+    } finally {
+      togglesInFlight.current.delete(field);
     }
   };
 
@@ -178,9 +196,15 @@ export default function ItemScreen() {
     try {
       const comment = await api.postComment(session, id, text);
       setCommentText('');
-      setDetails((prev) =>
-        prev ? { ...prev, comments: [...prev.comments, comment] } : prev
-      );
+      if (details) {
+        setDetails((prev) =>
+          prev ? { ...prev, comments: [...prev.comments, comment] } : prev
+        );
+      } else {
+        // Details never loaded, so there's no list to append to — try again
+        // so the new comment shows up instead of silently vanishing.
+        load();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not post comment');
     } finally {

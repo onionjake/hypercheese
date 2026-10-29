@@ -49,23 +49,41 @@ async function init(): Promise<void> {
   return initPromise;
 }
 
-async function flush(): Promise<void> {
+// Flushes run one at a time: overlapping writes of the same chunk could land
+// out of order and leave an older snapshot on disk.
+let flushChain: Promise<void> = Promise.resolve();
+
+function flush(): Promise<void> {
+  flushChain = flushChain.then(flushNow, flushNow);
+  return flushChain;
+}
+
+async function flushNow(): Promise<void> {
   const gen = generation;
   await init();
   if (gen !== generation || !dirty || chunkIndex === null) return;
   dirty = false;
+  // log() keeps appending while the write is in flight; work from a snapshot
+  // so those lines are neither lost on rotation nor written to the wrong chunk.
+  const snapshot = current;
   try {
-    await LegacyFileSystem.writeAsStringAsync(chunkUri(chunkIndex), current);
-    if (current.length >= CHUNK_BYTES) {
+    await LegacyFileSystem.writeAsStringAsync(chunkUri(chunkIndex), snapshot);
+    if (gen !== generation) return;
+    if (snapshot.length >= CHUNK_BYTES) {
       chunkIndex++;
-      current = '';
+      current = current.slice(snapshot.length);
+      if (current) {
+        dirty = true;
+        scheduleFlush();
+      }
       const stale = chunkIndex - MAX_CHUNKS;
       if (stale >= 0) {
         await LegacyFileSystem.deleteAsync(chunkUri(stale), { idempotent: true }).catch(() => {});
       }
     }
   } catch {
-    // Logging must never break the app.
+    // Logging must never break the app; retry on the next flush.
+    dirty = true;
   }
 }
 
@@ -81,6 +99,10 @@ export function log(tag: string, message: string, extra?: unknown): void {
   if (__DEV__) console.log(line);
   current += line + '\n';
   dirty = true;
+  scheduleFlush();
+}
+
+function scheduleFlush(): void {
   if (!flushTimer) {
     flushTimer = setTimeout(() => {
       flushTimer = null;
@@ -109,6 +131,8 @@ export function flushLogs(): Promise<void> {
 // this point (clear → reproduce the issue → export).
 export async function clearLogs(): Promise<void> {
   await init();
+  // Let an in-flight write finish first so it can't recreate a deleted chunk.
+  await flushChain;
   if (flushTimer) {
     clearTimeout(flushTimer);
     flushTimer = null;

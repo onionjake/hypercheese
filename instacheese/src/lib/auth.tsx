@@ -1,10 +1,20 @@
 import * as SecureStore from 'expo-secure-store';
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Platform } from 'react-native';
 
 import * as api from './api';
 import type { Session } from './api';
+import { claimCatalog } from './library-db';
 import { log, logError } from './log';
+import { clearTagCache } from './tags';
 import type { CurrentUser } from './types';
 import { clearAll as clearUploadQueue } from './upload-queue';
 
@@ -23,6 +33,14 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+// Everything cached on the device for the signed-in account that must not
+// carry over to whoever signs in next. The upload queue persists across
+// restarts — left behind, the next account would upload these files.
+async function forgetAccountState(): Promise<void> {
+  clearTagCache();
+  await clearUploadQueue().catch((err) => logError('auth', 'could not clear upload queue', err));
+}
 
 // Also used outside React (the background upload task) to act on behalf of
 // the signed-in user without an AuthProvider.
@@ -45,9 +63,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthContextValue['status']>('loading');
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<CurrentUser | null>(null);
+  // Bumped by every sign-in and sign-out, so the startup refresh below can't
+  // write back (or delete) a session that has since been replaced.
+  const authEpoch = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
+    const epoch = authEpoch.current;
+    const stale = () => cancelled || authEpoch.current !== epoch;
     (async () => {
       const stored = await loadStoredSession();
       if (cancelled) return;
@@ -63,13 +86,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Refresh the user in the background; sign out if the token was revoked.
       try {
         const fresh = await api.fetchCurrentUser(stored);
-        if (cancelled) return;
+        if (stale()) return;
         log('auth', `current user refreshed (can_write=${!!fresh.can_write})`);
         setUser(fresh);
         await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify({ ...stored, user: fresh }));
       } catch (err) {
         logError('auth', 'could not refresh current user', err);
-        if (!cancelled && err instanceof api.ApiError && err.status === 401) {
+        if (!stale() && err instanceof api.ApiError && err.status === 401) {
+          authEpoch.current++;
+          await forgetAccountState();
           await SecureStore.deleteItemAsync(STORAGE_KEY);
           setSession(null);
           setUser(null);
@@ -85,6 +110,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(async (serverUrl: string, username: string, password: string) => {
     const baseUrl = api.normalizeBaseUrl(serverUrl);
     const nickname = `InstaCheese on ${Platform.OS}`;
+    authEpoch.current++;
+
+    // A browser session left in the native cookie jar (a sign-out that
+    // couldn't reach the server, a half-finished sign-in) would make the
+    // server treat these credentials as that earlier user: /files/auth
+    // trusts current_user over the posted password. Drop it first.
+    await api.sessionLogout({ baseUrl, mode: 'session', token: null });
 
     // Preferred path: a device JWT that the upgraded backend accepts on /api.
     let token: string | null = null;
@@ -127,6 +159,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await persist(sessionSession, freshUser);
 
     async function persist(newSession: Session, newUser: CurrentUser | null) {
+      // Before the session goes live (and the upload queue starts): a
+      // different account must not inherit this device's backup marks.
+      await claimCatalog(`${baseUrl}|${username.trim().toLowerCase()}`);
+      clearTagCache();
       await SecureStore.setItemAsync(
         STORAGE_KEY,
         JSON.stringify({ ...newSession, user: newUser })
@@ -138,12 +174,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    if (session?.mode === 'session') {
-      await api.sessionLogout(session);
-    }
-    // The upload queue persists across restarts, so it must not survive a
-    // sign-out — the next account on this device would upload these files.
-    await clearUploadQueue().catch(() => {});
+    authEpoch.current++;
+    // In token mode too: a stray browser cookie would otherwise outlive the
+    // sign-out (see signIn).
+    if (session) await api.sessionLogout(session);
+    await forgetAccountState();
     await SecureStore.deleteItemAsync(STORAGE_KEY);
     setSession(null);
     setUser(null);
