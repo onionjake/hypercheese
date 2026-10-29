@@ -4,7 +4,7 @@ import * as LegacyFileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library/legacy';
 
 import { type Session } from './api';
-import { excludedAssetIds } from './library-db';
+import { excludedAssetIds, sweepPairedVideoLeftovers } from './library-db';
 import { log, logError } from './log';
 import { uploadAllowed } from './network';
 import {
@@ -193,6 +193,7 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
       emit();
     }
 
+    sweepPairedVideoLeftovers({ force: true });
     status.phase = cancelled ? 'cancelled' : 'done';
     log('sync', `full sync scan ${status.phase}`, status.counts);
     emit(

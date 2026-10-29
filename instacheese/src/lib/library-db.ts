@@ -1,4 +1,4 @@
-import { File } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library/legacy';
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
@@ -99,10 +99,11 @@ export async function assetInfo(
 ): Promise<MediaLibrary.AssetInfo & { slowMotion?: boolean }> {
   const info = await MediaLibrary.getAssetInfoAsync(assetId);
   const paired = info?.pairedVideoAsset?.uri;
-  if (paired) {
-    deleteFile(paired);
-    sweepPairedVideoLeftovers(paired);
-  }
+  if (paired) deleteFile(paired);
+  // The native handler can also write a copy it never reports (it runs
+  // again for the full-quality Live Photo after resolving with the degraded
+  // one), so sweep tmp/ as we go rather than trusting `paired` alone.
+  sweepPairedVideoLeftovers();
   const local = info?.localUri;
   if (local && local.includes('/MediaLibrary/slowMoVideo-')) {
     deleteFile(local.startsWith('file://') ? local : `file://${local}`);
@@ -123,16 +124,30 @@ function deleteFile(uri: string): void {
   }
 }
 
-// Builds before the cleanup above (whose legacy delete silently failed) left
-// one <UUID>.mov per Live Photo lookup in tmp/; clear them once per run.
-let sweptLeftovers = false;
-function sweepPairedVideoLeftovers(sample: string): void {
-  if (sweptLeftovers || Platform.OS !== 'ios') return;
-  sweptLeftovers = true;
+// Every Live Photo lookup can leave <UUID>.mov copies in tmp/ (see
+// assetInfo), and earlier builds' cleanup never worked at all. Sweep them —
+// throttled, and sparing anything written in the last few seconds that a
+// lookup still in flight might be about to report. Also called when a drain
+// or a Sync scan ends.
+const SWEEP_INTERVAL_MS = 15_000;
+const SWEEP_MIN_AGE_MS = 10_000;
+let lastSweep = 0;
+export function sweepPairedVideoLeftovers(opts: { force?: boolean } = {}): void {
+  if (Platform.OS !== 'ios') return;
+  const now = Date.now();
+  if (!opts.force && now - lastSweep < SWEEP_INTERVAL_MS) return;
+  lastSweep = now;
   try {
+    // tmp/ sits beside Library/ in the app container.
+    const tmp = new Directory(Paths.cache.uri.replace(/Library\/Caches\/?$/, 'tmp/'));
+    if (!tmp.exists) return;
     let removed = 0;
-    for (const entry of new File(sample).parentDirectory.list()) {
-      if (entry instanceof File && /^[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}\.mov$/i.test(entry.name)) {
+    for (const entry of tmp.list()) {
+      if (
+        entry instanceof File &&
+        /^[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}\.mov$/i.test(entry.name) &&
+        now - (entry.lastModified ?? now) > SWEEP_MIN_AGE_MS
+      ) {
         entry.delete();
         removed++;
       }

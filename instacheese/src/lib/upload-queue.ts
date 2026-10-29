@@ -3,7 +3,14 @@ import * as SQLite from 'expo-sqlite';
 import { AppState } from 'react-native';
 
 import { type Session } from './api';
-import { assetInfo, libraryCounts, markStatus, markedForSync, setSize } from './library-db';
+import {
+  assetInfo,
+  libraryCounts,
+  markStatus,
+  markedForSync,
+  setSize,
+  sweepPairedVideoLeftovers,
+} from './library-db';
 import { flushLogs, log, logError } from './log';
 import { onNetworkChange, uploadAllowed } from './network';
 import {
@@ -908,6 +915,7 @@ export function kick(trigger: string): Promise<void> {
       current = null;
       try {
         await flushShaCache();
+        sweepPairedVideoLeftovers({ force: true });
         await resetInFlight();
       } catch (err) {
         // Must not skip clearing runPromise below, or the queue would read
