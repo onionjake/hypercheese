@@ -54,7 +54,7 @@ TaskManager.defineTask(UPLOAD_TASK, async () => {
 // after the current file so state lands cleanly in the queue DB.
 if (Platform.OS === 'ios') {
   try {
-    BackgroundTask.addExpirationListener(() => queue.stop());
+    BackgroundTask.addExpirationListener(() => queue.stop({ byUser: false }));
   } catch {
     // Older native builds without the listener just get interrupted; the
     // queue's stale-state reset handles that on the next drain.

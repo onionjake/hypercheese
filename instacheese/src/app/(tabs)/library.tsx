@@ -174,7 +174,13 @@ export default function LibraryScreen() {
             ? 'failed'
             : 'pending';
       setAssets((prev) =>
-        prev.map((a) => (a.id === item.assetId ? { ...a, status, error: item.error } : a))
+        prev.map((a) =>
+          // An upload of an older version (edited mid-upload) doesn't change
+          // the catalog row, so don't badge it either.
+          a.id === item.assetId && (status === 'pending' || item.source === 'picker' || a.mtime === item.mtime)
+            ? { ...a, status, error: item.error }
+            : a
+        )
       );
       if (status !== 'pending') refreshCountsSoon();
     });
