@@ -386,11 +386,12 @@ export function enqueue(
              error = NULL,
              retry_at = NULL,
              strikes = 0,
-             -- A row still waiting keeps its deferral count: backup items
-             -- are re-upserted on every auto-retry, and resetting it would
-             -- put a file that keeps getting cut off back at the front.
+             -- A row still waiting for the same version keeps its deferral
+             -- count: backup items are re-upserted on every auto-retry, and
+             -- resetting it would put a file that keeps getting cut off back
+             -- at the front.
              deferrals = CASE WHEN uploads.status IN ('queued', 'checking', 'hashing', 'uploading')
-               THEN uploads.deferrals ELSE 0 END,
+               AND uploads.mtime = excluded.mtime THEN uploads.deferrals ELSE 0 END,
              updated_at = excluded.updated_at`,
           ...rows.flatMap((item) => [
             item.key,
