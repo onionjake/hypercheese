@@ -358,7 +358,11 @@ export async function hashAndUpload(
   session: Session,
   file: ProtocolFile & { localUri: string; cacheKey: string | null },
   onPhase?: (phase: 'hashing' | 'uploading') => void,
-  onProgress?: (bytesSent: number, bytesTotal: number) => void
+  onProgress?: (bytesSent: number, bytesTotal: number) => void,
+  // Runs right before the bytes go out; throw to stop. Hashing a big video
+  // can take minutes, and the network rules must hold at the moment the
+  // transfer starts, not just when the file was picked up.
+  beforeUpload?: () => Promise<void>
 ): Promise<'uploaded' | 'deduped'> {
   // Log the start of each phase, not just the outcome — a process death
   // mid-transfer otherwise leaves no trace of which file (or phase) it died in.
@@ -374,6 +378,7 @@ export async function hashAndUpload(
     return 'deduped';
   }
 
+  await beforeUpload?.();
   onPhase?.('uploading');
   log('upload', `uploading ${file.path}`);
   const task = LegacyFileSystem.createUploadTask(
