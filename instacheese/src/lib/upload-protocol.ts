@@ -269,6 +269,12 @@ export async function manifestCheck(
   return new Set(needed.map((n) => n.path));
 }
 
+function inAppSandbox(uri: string): boolean {
+  return [LegacyFileSystem.documentDirectory, LegacyFileSystem.cacheDirectory].some(
+    (dir) => !!dir && uri.startsWith(dir)
+  );
+}
+
 // Steps three and four for a single file: hash it (using the cache when a
 // stable cacheKey exists), offer the hash to the server, and upload the bytes
 // only if the server doesn't already have that content. Posting hashes
@@ -304,8 +310,13 @@ export async function hashAndUpload(
       httpMethod: 'PUT',
       uploadType: LegacyFileSystem.FileSystemUploadType.BINARY_CONTENT,
       // On iOS a background NSURLSession keeps an in-flight transfer going
-      // when the app is backgrounded mid-upload.
-      sessionType: LegacyFileSystem.FileSystemSessionType.BACKGROUND,
+      // when the app is backgrounded mid-upload — but it is run by a system
+      // daemon that can only be handed files inside the app's sandbox. A
+      // Photos-library original (DCIM, edited-photo renders) fails there
+      // every time, so those go through the in-process session.
+      sessionType: inAppSandbox(file.localUri)
+        ? LegacyFileSystem.FileSystemSessionType.BACKGROUND
+        : LegacyFileSystem.FileSystemSessionType.FOREGROUND,
       headers: {
         ...authHeaders(session),
         'X-Path': file.path,

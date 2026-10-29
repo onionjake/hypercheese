@@ -20,6 +20,9 @@ export const UPLOAD_TASK = 'instacheese-upload-queue';
 // React tree) still find them — this module is imported from the app entry.
 TaskManager.defineTask(UPLOAD_TASK, async () => {
   try {
+    // A sign-out while the keychain read is in flight must not hand the
+    // queue the signed-out account's credentials.
+    const startedIn = queue.currentEpoch();
     const stored = await loadStoredSession();
     // Same gate as the foreground flows: only drain for a user known to have
     // write permission (a null cached user means we couldn't verify — skip).
@@ -27,11 +30,18 @@ TaskManager.defineTask(UPLOAD_TASK, async () => {
       log('bg', 'background wakeup skipped: no signed-in writer');
       return BackgroundTask.BackgroundTaskResult.Success;
     }
+    if (queue.currentEpoch() !== startedIn) {
+      log('bg', 'background wakeup skipped: signed out meanwhile');
+      return BackgroundTask.BackgroundTaskResult.Success;
+    }
     log('bg', 'background drain woke up');
     queue.setSession({ baseUrl: stored.baseUrl, mode: stored.mode, token: stored.token });
     // Same work an in-app auto-retry does: re-queue anything marked for
     // backup, then drain until done, paused (network), or the OS calls time.
-    await queue.enqueueBackupPending({ failedRetryAfterMs: queue.FAILED_RETRY_MS });
+    await queue.enqueueBackupPending({
+      failedRetryAfterMs: queue.FAILED_RETRY_MS,
+      epoch: startedIn,
+    });
     await queue.kick('background');
     // Piggyback on the wakeup: freshen the catalog and keep the nightly
     // mark reminder's count/schedule current while the app stays closed.
