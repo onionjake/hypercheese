@@ -99,9 +99,10 @@ async function openDb(): Promise<SQLite.SQLiteDatabase> {
 // path). Those can't be backed up reliably (see isBackupSupported), so the
 // export is deleted too and `localUri` cleared, with `slowMotion` set.
 export async function assetInfo(
-  assetId: string
+  assetId: string,
+  options?: MediaLibrary.MediaLibraryAssetInfoQueryOptions
 ): Promise<MediaLibrary.AssetInfo & { slowMotion?: boolean }> {
-  const info = await MediaLibrary.getAssetInfoAsync(assetId);
+  const info = await MediaLibrary.getAssetInfoAsync(assetId, options);
   const paired = info?.pairedVideoAsset?.uri;
   if (paired) deleteFile(paired);
   // The native handler can also write a copy it never reports (it runs
