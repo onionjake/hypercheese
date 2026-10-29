@@ -472,6 +472,7 @@ export async function removeQueued(
 // device can never drain (upload) the previous account's photos.
 export async function clearAll(): Promise<void> {
   epoch++;
+  resolvedThisRun.clear();
   stopRequested = true;
   pendingKick = false;
   session = null;
@@ -566,8 +567,19 @@ export async function libraryLocalUri(
 // A persisted localUri can go stale — picker items keep an ImagePicker
 // temp-cache path the OS may purge — so verify it still exists before use
 // and otherwise re-resolve from the media library via the assetId.
+// Library paths resolved in this process, by queue key: lets the upload step
+// reuse the stat step's lookup (each one has side effects on iOS) without
+// persisting a path a later launch may not be allowed to read.
+const resolvedThisRun = new Map<string, string>();
+
 async function resolveLocalUri(item: QueueItem): Promise<string> {
-  if (item.localUri) {
+  // A path outside the app's own folders (a Photos-library original that an
+  // earlier build persisted) is only trusted when there's no asset to
+  // re-resolve it from.
+  const ownFile = [LegacyFileSystem.cacheDirectory, LegacyFileSystem.documentDirectory].some(
+    (dir) => !!dir && !!item.localUri?.startsWith(dir)
+  );
+  if (item.localUri && (ownFile || !item.assetId || item.localUri === resolvedThisRun.get(item.key))) {
     try {
       const info = await LegacyFileSystem.getInfoAsync(item.localUri);
       if (info.exists) return item.localUri;
@@ -576,7 +588,9 @@ async function resolveLocalUri(item: QueueItem): Promise<string> {
     }
   }
   if (!item.assetId) throw new Error('File is no longer available');
-  return libraryLocalUri(item.assetId, item.thumbUri);
+  const uri = await libraryLocalUri(item.assetId, item.thumbUri);
+  resolvedThisRun.set(item.key, uri);
+  return uri;
 }
 
 // Removal (deselect) can happen after the drain read a row into its
@@ -688,6 +702,7 @@ async function settle(
   if (status === 'failed') counts.failed++;
   else counts.finished++;
   if (current?.key === item.key) current = null;
+  resolvedThisRun.delete(item.key);
   emitItem({ ...item });
   broadcastSummary();
 }
@@ -792,9 +807,10 @@ async function drain(trigger: string, sess: Session): Promise<void> {
           const stat = await LegacyFileSystem.getInfoAsync(localUri);
           if (!stat.exists || stat.size === undefined) throw new Error('Could not stat file');
           item.size = stat.size;
-          // In memory only: a Photos-library path is resolved per run (iOS
-          // grants read access to it through PhotoKit for this process), so
-          // persisting it could hand a later launch a path it can't read.
+          // In memory only (resolvedThisRun): a Photos-library path is
+          // resolved per run (iOS grants read access to it through PhotoKit
+          // for this process), so persisting it could hand a later launch a
+          // path it can't read.
           item.localUri = localUri;
           await db.runAsync('UPDATE uploads SET size = ? WHERE key = ?', stat.size, item.key);
           if (item.assetId) await setSize(item.assetId, stat.size);
