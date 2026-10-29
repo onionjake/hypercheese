@@ -47,6 +47,9 @@ export const FAILED_RETRY_MS = 6 * 60 * 60 * 1000;
 // file the server rejects with a 5xx every time would otherwise be re-sent
 // in full every FAILED_RETRY_MS forever.
 const MAX_AUTO_RETRIES = 4;
+// Background cut-offs a file may take, uncounted, before they count as
+// ordinary interruptions.
+const MAX_DEFERRALS = 3;
 
 // When the app last left the foreground. A transfer that dies while the app
 // is (or was) in the background was most likely cut off by iOS suspending
@@ -168,6 +171,10 @@ async function openDb(): Promise<SQLite.SQLiteDatabase> {
       }
       if (!cols.some((c) => c.name === 'strikes')) {
         await db.execAsync('ALTER TABLE uploads ADD COLUMN strikes INTEGER NOT NULL DEFAULT 0');
+      }
+      // Times a transfer was cut off by iOS backgrounding (see drain()).
+      if (!cols.some((c) => c.name === 'deferrals')) {
+        await db.execAsync('ALTER TABLE uploads ADD COLUMN deferrals INTEGER NOT NULL DEFAULT 0');
       }
       return db;
     })();
@@ -377,6 +384,7 @@ export function enqueue(
              error = NULL,
              retry_at = NULL,
              strikes = 0,
+             deferrals = 0,
              updated_at = excluded.updated_at`,
           ...rows.flatMap((item) => [
             item.key,
@@ -700,7 +708,8 @@ async function settle(
            ? `CASE WHEN strikes = 0 THEN ? WHEN strikes < ${MAX_AUTO_RETRIES} THEN ? ELSE NULL END`
            : 'NULL'
        },
-       strikes = ${status === 'failed' ? 'strikes + 1' : '0'}
+       strikes = ${status === 'failed' ? 'strikes + 1' : '0'},
+       deferrals = 0
      WHERE key = ?`,
     status,
     item.error,
@@ -804,7 +813,8 @@ async function drain(trigger: string, sess: Session): Promise<void> {
     await refreshCounts();
 
     const rows = await db.getAllAsync(
-      `SELECT * FROM uploads WHERE status = 'queued' ORDER BY rowid LIMIT ?`,
+      // Files deferred by a background cut-off go behind everything else.
+      `SELECT * FROM uploads WHERE status = 'queued' ORDER BY deferrals, rowid LIMIT ?`,
       BATCH_SIZE
     );
     if (rows.length === 0) break;
@@ -924,12 +934,24 @@ async function drain(trigger: string, sess: Session): Promise<void> {
             throw new Paused(permission.reason ?? 'Uploads paused');
           }
           // Cut off while the app was in the background (iOS suspends it, or
-          // a background-task window ended): leave the file queued with no
-          // strike, so it resumes on the next foreground or wakeup instead of
-          // burning its retries and backing off for hours.
+          // a background-task window ended): not the file's fault, so leave it
+          // queued with no strike — but behind the rest of the queue, so one
+          // big video can't hold up everything after it. A file that keeps
+          // getting cut off (too big to finish in any window, or failing on
+          // its own) is treated as a normal interruption after a few tries.
           if (wasBackgroundedSince(attemptStarted)) {
-            logError('queue', `upload of ${item.filename} cut off in the background, pausing`, err);
-            throw new Paused('Paused while the app was in the background');
+            const row = await db.getFirstAsync<{ deferrals: number }>(
+              'SELECT deferrals FROM uploads WHERE key = ?',
+              item.key
+            );
+            if ((row?.deferrals ?? 0) < MAX_DEFERRALS) {
+              await db.runAsync(
+                'UPDATE uploads SET deferrals = deferrals + 1 WHERE key = ?',
+                item.key
+              );
+              logError('queue', `upload of ${item.filename} cut off in the background, pausing`, err);
+              throw new Paused('Paused while the app was in the background');
+            }
           }
         }
         logError('queue', `failed ${item.filename}`, err);
