@@ -1,5 +1,5 @@
 import * as Crypto from 'expo-crypto';
-import { File } from 'expo-file-system';
+import { File, FileMode } from 'expo-file-system';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { sha256 } from 'js-sha256';
 import { Platform } from 'react-native';
@@ -153,24 +153,28 @@ function toHex(bytes: Uint8Array): string {
 const CHUNKED_HASH_THRESHOLD = 24 * 1024 * 1024;
 const HASH_CHUNK_SIZE = 16 * 1024 * 1024;
 
-function base64ToBytes(b64: string): Uint8Array {
-  const bin = globalThis.atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
 export async function sha256OfFile(uri: string, size?: number): Promise<string> {
   if (size !== undefined && size > CHUNKED_HASH_THRESHOLD) {
+    // Sequential reads through a file handle: its offset is 64-bit on both
+    // platforms. (The legacy readAsStringAsync `position` is a 32-bit Int on
+    // Android, so every chunk past 2 GiB re-read the same bytes and a long
+    // 4K video could never hash correctly.)
     const hash = sha256.create();
-    for (let position = 0; position < size; position += HASH_CHUNK_SIZE) {
-      const length = Math.min(HASH_CHUNK_SIZE, size - position);
-      const chunk = await LegacyFileSystem.readAsStringAsync(uri, {
-        encoding: LegacyFileSystem.EncodingType.Base64,
-        position,
-        length,
-      });
-      hash.update(base64ToBytes(chunk));
+    // Read-only: the default (read-write on Android) needs write access a
+    // camera-roll original doesn't grant.
+    const handle = new File(uri).open(FileMode.ReadOnly);
+    try {
+      let read = 0;
+      while (read < size) {
+        const chunk = handle.readBytes(Math.min(HASH_CHUNK_SIZE, size - read));
+        if (chunk.length === 0) throw new Error('File ended before its expected size');
+        hash.update(chunk);
+        read += chunk.length;
+        // readBytes is synchronous; let the event loop breathe between chunks.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    } finally {
+      handle.close();
     }
     return hash.hex();
   }
@@ -236,11 +240,14 @@ export async function cachedSha256OfFile(
   uri: string,
   size?: number
 ): Promise<string> {
-  const cache = cacheKey ? await loadShaCache() : null;
-  if (cache && cacheKey && cache[cacheKey]) return cache[cacheKey];
+  // Hashes of files over 2 GiB cached by older builds are wrong on Android
+  // (see sha256OfFile); key those under a new version so they're redone.
+  const key = cacheKey && size !== undefined && size >= 2 ** 31 ? `${cacheKey}:v2` : cacheKey;
+  const cache = key ? await loadShaCache() : null;
+  if (cache && key && cache[key]) return cache[key];
   const sha = await sha256OfFile(uri, size);
-  if (cache && cacheKey) {
-    cache[cacheKey] = sha;
+  if (cache && key) {
+    cache[key] = sha;
     scheduleShaCacheSave();
   }
   return sha;

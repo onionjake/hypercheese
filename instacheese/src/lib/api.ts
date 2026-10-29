@@ -59,6 +59,23 @@ async function fetchCsrfToken(
   return token;
 }
 
+// React Native's Android client has no default timeout; without one a
+// stalled connection leaves sign-in or the feed spinning forever.
+const REQUEST_TIMEOUT_MS = 60_000;
+
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: abort.signal });
+  } catch (err) {
+    if (abort.signal.aborted) throw new Error('The server took too long to respond');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function request<T>(session: Session, path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method || 'GET').toUpperCase();
 
@@ -76,7 +93,7 @@ async function request<T>(session: Session, path: string, init: RequestInit = {}
     if (typeof init.body === 'string' && !headers['Content-Type']) {
       headers['Content-Type'] = 'application/json';
     }
-    return fetch(session.baseUrl + path, { ...init, credentials: 'include', headers });
+    return fetchWithTimeout(session.baseUrl + path, { ...init, credentials: 'include', headers });
   };
 
   const needsCsrf = session.mode === 'session' && method !== 'GET';
@@ -120,7 +137,7 @@ export async function tokenLogin(
   nickname: string,
   os: string
 ): Promise<string> {
-  const res = await fetch(`${baseUrl}/files/auth`, {
+  const res = await fetchWithTimeout(`${baseUrl}/files/auth`, {
     method: 'POST',
     // The server prefers a cookie session's user over these credentials.
     credentials: 'omit',
