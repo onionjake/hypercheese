@@ -420,12 +420,16 @@ export async function enqueueBackupPending(
 }
 
 // Drop items that haven't finished (or started uploading bytes) — used when a
-// backup selection is un-checked. Scoped to a source when given, so
-// un-checking a backup photo can't cancel an upload the picker or a full sync
-// queued for the same asset. The item currently uploading is never removed;
+// photo is marked "won't upload". Scoped to the given source(s), so that
+// can't cancel an upload another flow (a picker share) queued for the same
+// asset. The item currently uploading is never removed;
 // the drain also re-checks row existence before each file, so removal takes
 // effect even for items already read into the active batch.
-export async function removeQueued(keys: string[], source?: QueueSource): Promise<void> {
+export async function removeQueued(
+  keys: string[],
+  source?: QueueSource | QueueSource[]
+): Promise<void> {
+  const sources = source === undefined ? [] : Array.isArray(source) ? source : [source];
   if (keys.length === 0) return;
   const db = await openDb();
   const remove = keys.filter((k) => k !== current?.key);
@@ -435,9 +439,9 @@ export async function removeQueued(keys: string[], source?: QueueSource): Promis
     await db.runAsync(
       `DELETE FROM uploads
        WHERE status IN ('queued', 'checking', 'failed') AND key IN (${placeholders})
-       ${source ? 'AND source = ?' : ''}`,
+       ${sources.length ? `AND source IN (${sources.map(() => '?').join(',')})` : ''}`,
       ...batch,
-      ...(source ? [source] : [])
+      ...sources
     );
   }
   await refreshAndBroadcast();

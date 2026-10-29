@@ -56,6 +56,11 @@ const FILTERS: { key: AssetFilter; label: string }[] = [
   { key: 'excluded', label: "Won't upload" },
 ];
 
+// "Won't upload" cancels a waiting upload queued by Back up or a full Sync
+// (the sync re-enqueue takes over a backup row's source). A picker share is a
+// separate, explicit request for that one photo, so it is left alone.
+const WONT_UPLOAD_CANCELS: queue.QueueSource[] = ['backup', 'sync'];
+
 const countFor = (counts: LibraryCounts, key: AssetFilter): number =>
   key === 'all' ? counts.total : counts[key];
 
@@ -242,7 +247,7 @@ export default function LibraryScreen() {
   // as un-checking it would.
   const markWontUpload = async (asset: LibraryAsset) => {
     await setExcluded([asset.id], true);
-    await queue.removeQueued([queue.assetKey(asset.id)], 'backup');
+    await queue.removeQueued([queue.assetKey(asset.id)], WONT_UPLOAD_CANCELS);
     setAssets((prev) =>
       prev.map((a) =>
         a.id === asset.id
@@ -276,7 +281,7 @@ export default function LibraryScreen() {
           style: 'destructive',
           onPress: async () => {
             const ids = await excludeSelected();
-            await queue.removeQueued(ids.map(queue.assetKey), 'backup');
+            await queue.removeQueued(ids.map(queue.assetKey), WONT_UPLOAD_CANCELS);
             await loadPage(true);
             await refreshCounts();
           },

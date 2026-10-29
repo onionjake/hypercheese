@@ -33,6 +33,7 @@ export default function SyncScreen() {
     ['Already on server', counts?.upToDate],
     ['Queued for upload', counts?.queued],
     ['Not supported yet', counts?.unsupported],
+    ["Marked won't upload", counts?.excluded],
     ['Failed', counts?.failed],
   ];
 

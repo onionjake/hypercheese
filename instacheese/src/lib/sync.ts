@@ -4,6 +4,7 @@ import * as LegacyFileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library/legacy';
 
 import { type Session } from './api';
+import { excludedAssetIds } from './library-db';
 import { log, logError } from './log';
 import { uploadAllowed } from './network';
 import {
@@ -27,6 +28,7 @@ const PAGE_SIZE = 200;
 export interface SyncCounts {
   scanned: number;
   unsupported: number;
+  excluded: number; // marked "won't upload" on the Backup screen
   upToDate: number; // manifest said the server already has it
   queued: number; // handed to the upload queue
   failed: number; // couldn't be read/stat'ed during the scan
@@ -77,7 +79,7 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
   const status: SyncStatus = {
     phase: 'running',
     activity: 'Starting…',
-    counts: { scanned: 0, unsupported: 0, upToDate: 0, queued: 0, failed: 0 },
+    counts: { scanned: 0, unsupported: 0, excluded: 0, upToDate: 0, queued: 0, failed: 0 },
     lastError: null,
   };
   const emit = (activity?: string) => {
@@ -104,6 +106,9 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
     log('sync', 'full sync scan started');
 
     const sizeCache = await loadSizeCache();
+    // "Uploads your whole camera roll" still means minus what the user
+    // explicitly said must never be uploaded.
+    const excluded = await excludedAssetIds();
     const queueEpoch = queue.currentEpoch();
     // Files the server asked for, including ones already waiting in the
     // queue (which enqueue() doesn't count as newly queued).
@@ -129,6 +134,10 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
         status.counts.scanned++;
         if (!SUPPORTED_EXTENSIONS.has(extensionOf(asset.filename))) {
           status.counts.unsupported++;
+          continue;
+        }
+        if (excluded.has(asset.id)) {
+          status.counts.excluded++;
           continue;
         }
         const mtime = assetMtime(asset);
