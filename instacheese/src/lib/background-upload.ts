@@ -43,7 +43,7 @@ TaskManager.defineTask(UPLOAD_TASK, async () => {
       epoch: startedIn,
     });
     await queue.requeueDueRetries();
-    await queue.kick('background');
+    await queue.kick('background', { auto: true });
     await queue.waitForIdle();
     // Piggyback on the wakeup: freshen the catalog and keep the nightly
     // mark reminder's count/schedule current while the app stays closed.

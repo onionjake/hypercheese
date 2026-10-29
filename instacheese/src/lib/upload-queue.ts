@@ -1062,9 +1062,11 @@ async function drain(trigger: string, sess: Session): Promise<void> {
 // the background task can await the whole drain. A kick that lands while a
 // drain is winding down (Stop pressed, or its final empty batch) isn't lost —
 // it's remembered and honored as soon as the old drain exits.
-export function kick(trigger: string): Promise<void> {
+// `auto`: an automatic trigger (background wakeup), which — unlike a tap —
+// mustn't undo a Stop the user pressed while that drain winds down.
+export function kick(trigger: string, opts: { auto?: boolean } = {}): Promise<void> {
   if (runPromise) {
-    pendingKick = true;
+    if (!(opts.auto && stoppedByUser)) pendingKick = true;
     return runPromise;
   }
   if (!session) return Promise.resolve();
