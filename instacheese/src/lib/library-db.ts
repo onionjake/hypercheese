@@ -3,7 +3,7 @@ import * as MediaLibrary from 'expo-media-library/legacy';
 import * as SQLite from 'expo-sqlite';
 
 import { flushLogs, log } from './log';
-import { MEDIA_PERMISSIONS, SUPPORTED_EXTENSIONS, assetMtime, extensionOf } from './upload-protocol';
+import { MEDIA_PERMISSIONS, assetMtime, isBackupSupported } from './upload-protocol';
 
 // Local catalog of the device's media library for partial sync: which assets
 // exist, which ones the user wants backed up, and what happened last time we
@@ -88,11 +88,24 @@ async function openDb(): Promise<SQLite.SQLiteDatabase> {
 // video to a fresh temp file on EVERY call and never deletes it; a Sync or
 // backup over thousands of Live Photos would fill the phone's storage with
 // copies nobody uses. Delete it before handing the info back.
-export async function assetInfo(assetId: string): Promise<MediaLibrary.AssetInfo> {
+//
+// The same goes for an iOS slow-motion video, which comes back as a fresh
+// full re-encode under Caches/MediaLibrary/slowMoVideo-*.mov (as a bare
+// path). Those can't be backed up reliably (see isBackupSupported), so the
+// export is deleted too and `localUri` cleared, with `slowMotion` set.
+export async function assetInfo(
+  assetId: string
+): Promise<MediaLibrary.AssetInfo & { slowMotion?: boolean }> {
   const info = await MediaLibrary.getAssetInfoAsync(assetId);
   const paired = info?.pairedVideoAsset?.uri;
   if (paired) {
     await LegacyFileSystem.deleteAsync(paired, { idempotent: true }).catch(() => {});
+  }
+  const local = info?.localUri;
+  if (local && local.includes('/MediaLibrary/slowMoVideo-')) {
+    const uri = local.startsWith('file://') ? local : `file://${local}`;
+    await LegacyFileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+    return { ...info, localUri: undefined, slowMotion: true };
   }
   return info;
 }
@@ -229,7 +242,7 @@ async function runScan(
             asset.mediaType,
             asset.uri,
             assetMtime(asset),
-            SUPPORTED_EXTENSIONS.has(extensionOf(asset.filename)) ? 1 : 0,
+            isBackupSupported(asset) ? 1 : 0,
             Math.round(asset.creationTime || 0),
             generation,
           ])

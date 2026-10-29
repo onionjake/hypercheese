@@ -9,9 +9,8 @@ import { log, logError } from './log';
 import { uploadAllowed } from './network';
 import {
   MEDIA_PERMISSIONS,
-  SUPPORTED_EXTENSIONS,
   assetMtime,
-  extensionOf,
+  isBackupSupported,
   manifestCheck,
   stablePath,
 } from './upload-protocol';
@@ -133,7 +132,7 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
       for (const asset of page.assets) {
         if (cancelled) break;
         status.counts.scanned++;
-        if (!SUPPORTED_EXTENSIONS.has(extensionOf(asset.filename))) {
+        if (!isBackupSupported(asset)) {
           status.counts.unsupported++;
           continue;
         }
