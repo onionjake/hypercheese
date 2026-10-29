@@ -997,7 +997,16 @@ async function drain(trigger: string, sess: Session): Promise<void> {
             setCurrent(item, phase);
             setItemStatus(item, phase).catch(() => {});
           },
-          onUploadProgress
+          onUploadProgress,
+          // Wi-Fi may have gone while a big file was hashing: don't start
+          // a multi-GB transfer over mobile data.
+          async () => {
+            const permission = await uploadAllowed();
+            if (!permission.allowed) {
+              await uncountAttempt(item.key);
+              throw new Paused(permission.reason ?? 'Uploads paused');
+            }
+          }
         );
         await settle(item, outcome === 'deduped' ? 'exists' : 'done');
       } catch (err) {
