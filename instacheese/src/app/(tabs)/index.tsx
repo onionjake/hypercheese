@@ -181,11 +181,7 @@ export default function FeedScreen() {
           {modeButton('all', 'albums-outline', 'Everything')}
         </View>
       </View>
-      {error && items.length === 0 ? (
-        <View style={styles.center}>
-          <Text style={{ color: palette.subtleText, textAlign: 'center', padding: 24 }}>{error}</Text>
-        </View>
-      ) : session ? (
+      {session ? (
         <FlatList
           data={items}
           keyExtractor={(item) => String(item.id)}
@@ -204,7 +200,18 @@ export default function FeedScreen() {
           onEndReached={onEndReached}
           onEndReachedThreshold={2}
           ListEmptyComponent={
-            total === null ? (
+            // Inside the list (not instead of it) so pull-to-refresh still
+            // works after a failed first load — nothing else retries it.
+            error ? (
+              <View style={[styles.center, { paddingTop: 48, gap: 4 }]}>
+                <Text style={{ color: palette.subtleText, textAlign: 'center', padding: 24 }}>
+                  {error}
+                </Text>
+                <Pressable onPress={() => loadPage({ refresh: true })} hitSlop={8}>
+                  <Text style={{ color: accent, fontWeight: '600' }}>Try again</Text>
+                </Pressable>
+              </View>
+            ) : total === null ? (
               <View style={styles.center}>
                 <ActivityIndicator style={{ marginTop: 48 }} />
               </View>
