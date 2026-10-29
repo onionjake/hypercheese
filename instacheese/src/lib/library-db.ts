@@ -505,6 +505,20 @@ export async function excludeSelected(): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
+// A manual Retry is a fresh start: back to 'pending' with no backoff, so a
+// blip during the retry gets its prompt automatic retry again.
+export async function resetFailures(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const db = await openDb();
+  for (const batch of chunk(ids, 400)) {
+    await db.runAsync(
+      `UPDATE assets SET status = 'pending', failed_at = NULL
+       WHERE status = 'failed' AND id IN (${batch.map(() => '?').join(',')})`,
+      ...batch
+    );
+  }
+}
+
 // Assets the user marked "won't upload" — every upload flow honours that.
 export async function excludedAssetIds(): Promise<Set<string>> {
   const db = await openDb();

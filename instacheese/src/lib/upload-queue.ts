@@ -8,6 +8,7 @@ import {
   libraryCounts,
   markStatus,
   markedForSync,
+  resetFailures,
   setSize,
   sweepPairedVideoLeftovers,
 } from './library-db';
@@ -492,6 +493,12 @@ export async function retryFailed(): Promise<void> {
   for (const row of failed) {
     emitItem({ ...rowToItem(row), status: 'queued', error: null });
   }
+  await resetFailures(
+    failed
+      .map(rowToItem)
+      .filter((i) => i.source === 'backup' && i.assetId)
+      .map((i) => i.assetId!)
+  );
   await refreshAndBroadcast();
   kick('retry-failed');
 }
@@ -933,7 +940,9 @@ export function kick(trigger: string): Promise<void> {
         // ran; a transfer cut off at the end of it is due right away.
         await requeueDueRetries().catch(() => {});
         await refreshCounts().catch(() => {});
-        if (counts.remaining > 0 && session) kick(`${trigger}+pending`);
+        // Skipped if a drain started during the awaits above (and may since
+        // have been Stopped by the user — don't override that).
+        if (counts.remaining > 0 && session && !runPromise) kick(`${trigger}+pending`);
       }
     });
   broadcastSummary();
