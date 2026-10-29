@@ -38,6 +38,9 @@ export const FAILED_RETRY_MS = 6 * 60 * 60 * 1000;
 // Finished rows stick around so the queue screen can show what happened, but
 // not forever.
 const FINISHED_TTL_MS = 24 * 60 * 60 * 1000;
+// Failed rows nobody retried or cleared: a deleted photo would otherwise keep
+// the "failed" pill up forever. (Still-marked backups get re-queued.)
+const FAILED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type QueueSource = 'picker' | 'backup' | 'sync';
 
@@ -476,6 +479,15 @@ export async function retryFailed(): Promise<void> {
   kick('retry-failed');
 }
 
+// Failures can be permanent (the photo was deleted, a picker copy purged),
+// and retrying those only fails again — let the user dismiss them. Backup
+// items whose photo still exists come back on the next auto-retry anyway.
+export async function clearFailed(): Promise<void> {
+  const db = await openDb();
+  await db.runAsync(`DELETE FROM uploads WHERE status = 'failed'`);
+  await refreshAndBroadcast();
+}
+
 export async function clearFinished(): Promise<void> {
   const db = await openDb();
   await db.runAsync(`DELETE FROM uploads WHERE status IN ('done', 'exists')`);
@@ -667,6 +679,10 @@ async function drain(trigger: string, sess: Session): Promise<void> {
   await db.runAsync(
     `DELETE FROM uploads WHERE status IN ('done', 'exists') AND updated_at < ?`,
     Date.now() - FINISHED_TTL_MS
+  );
+  await db.runAsync(
+    `DELETE FROM uploads WHERE status = 'failed' AND updated_at < ?`,
+    Date.now() - FAILED_TTL_MS
   );
   await refreshAndBroadcast();
   log('queue', `drain started (${trigger}): ${counts.remaining} queued`);

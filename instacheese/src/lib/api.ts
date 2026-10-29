@@ -30,6 +30,23 @@ export function normalizeBaseUrl(input: string): string {
   return url;
 }
 
+// React Native's Android client has no default timeout; without one a
+// stalled connection leaves sign-in or the feed spinning forever.
+const REQUEST_TIMEOUT_MS = 60_000;
+
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: abort.signal });
+  } catch (err) {
+    if (abort.signal.aborted) throw new Error('The server took too long to respond');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // --- CSRF support for session mode -----------------------------------------
 // Older backends protect /api writes with Rails CSRF. We do what the web app
 // does: read <meta name="csrf-token"> from an HTML page and send it as
@@ -51,29 +68,14 @@ async function fetchCsrfToken(
   path = '/',
   signal?: AbortSignal
 ): Promise<string> {
-  const res = await fetch(baseUrl + path, { credentials: 'include', signal });
+  const res = signal
+    ? await fetch(baseUrl + path, { credentials: 'include', signal })
+    : await fetchWithTimeout(baseUrl + path, { credentials: 'include' });
   const html = await res.text();
   const token = extractCsrfToken(html);
   if (!token) throw new ApiError(res.status, 'Could not find CSRF token');
   csrfTokens.set(baseUrl, token);
   return token;
-}
-
-// React Native's Android client has no default timeout; without one a
-// stalled connection leaves sign-in or the feed spinning forever.
-const REQUEST_TIMEOUT_MS = 60_000;
-
-async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-  const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...init, signal: abort.signal });
-  } catch (err) {
-    if (abort.signal.aborted) throw new Error('The server took too long to respond');
-    throw err;
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 async function request<T>(session: Session, path: string, init: RequestInit = {}): Promise<T> {
@@ -162,6 +164,34 @@ export async function tokenLogin(
   return json.token;
 }
 
+// A device token for the user the browser session (cookie) belongs to —
+// /files/auth trusts current_user, so no password is needed. Used to recover
+// upload credentials when the password-based tokenLogin failed transiently.
+// Only call while the cookie jar is known to hold THIS user's session.
+export async function tokenFromSession(
+  baseUrl: string,
+  nickname: string,
+  os: string
+): Promise<string> {
+  const res = await fetchWithTimeout(`${baseUrl}/files/auth`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', 'X-API-Version': '1.0' },
+    body: JSON.stringify({
+      nickname,
+      os,
+      client_software: CLIENT_SOFTWARE,
+      client_version: CLIENT_VERSION,
+    }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, (await res.text().catch(() => '')) || 'Could not get upload token');
+  }
+  const json = (await res.json()) as { token?: string };
+  if (!json.token) throw new ApiError(res.status, 'Could not get upload token');
+  return json.token;
+}
+
 // Sign in the way a browser does: fetch the Devise form for a CSRF token,
 // then POST the credentials. React Native's networking stack stores the
 // session cookie automatically, so later /api requests are authenticated.
@@ -177,7 +207,7 @@ export async function sessionLogin(
     'user[password]': password,
     'user[remember_me]': '1',
   });
-  const res = await fetch(`${baseUrl}/users/sign_in`, {
+  const res = await fetchWithTimeout(`${baseUrl}/users/sign_in`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
