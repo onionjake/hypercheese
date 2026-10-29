@@ -70,6 +70,11 @@ export class NetworkError extends Error {}
 // it as connectivity when the device has actually lost the network.
 export class UploadInterrupted extends Error {}
 
+// The server (or the proxy in front of it) answered with a 5xx. Not proof
+// the file is bad — a restart or a transient storage error look the same —
+// so the queue fails the file but schedules an automatic retry.
+export class ServerError extends Error {}
+
 // No request may hang the queue: React Native's Android client has no
 // default timeout, so a stalled connection would block the drain forever.
 const REQUEST_TIMEOUT_MS = 2 * 60 * 1000;
@@ -142,6 +147,12 @@ export async function postJson<T>(session: Session, path: string, body: unknown)
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     log('api', `POST ${path} failed (${res.status}): ${text.slice(0, 500)}`);
+    // A gateway error on these small JSON steps means the server is down or
+    // restarting, nothing about the file: pause rather than fail the batch.
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      throw new NetworkError(`Server unavailable (${res.status})`);
+    }
+    if (res.status >= 500) throw new ServerError(text || `Request failed (${res.status})`);
     throw new Error(text || `Request failed (${res.status})`);
   }
   try {
@@ -291,12 +302,6 @@ export async function manifestCheck(
   return new Set(needed.map((n) => n.path));
 }
 
-function inAppSandbox(uri: string): boolean {
-  return [LegacyFileSystem.documentDirectory, LegacyFileSystem.cacheDirectory].some(
-    (dir) => !!dir && uri.startsWith(dir)
-  );
-}
-
 // Steps three and four for a single file: hash it (using the cache when a
 // stable cacheKey exists), offer the hash to the server, and upload the bytes
 // only if the server doesn't already have that content. Posting hashes
@@ -331,14 +336,14 @@ export async function hashAndUpload(
     {
       httpMethod: 'PUT',
       uploadType: LegacyFileSystem.FileSystemUploadType.BINARY_CONTENT,
-      // On iOS a background NSURLSession keeps an in-flight transfer going
-      // when the app is backgrounded mid-upload — but it is run by a system
-      // daemon that can only be handed files inside the app's sandbox. A
-      // Photos-library original (DCIM, edited-photo renders) fails there
-      // every time, so those go through the in-process session.
-      sessionType: inAppSandbox(file.localUri)
-        ? LegacyFileSystem.FileSystemSessionType.BACKGROUND
-        : LegacyFileSystem.FileSystemSessionType.FOREGROUND,
+      // In-process session on iOS. A background NSURLSession would keep a
+      // transfer going after the app is suspended, but it can't read
+      // Photos-library originals (it runs in a system daemon outside the
+      // sandbox), never fails while the connection or server is down (the
+      // drain would hang with no way to stop it), and retries over cellular
+      // regardless of the Wi-Fi-only setting. A transfer cut off by
+      // suspension is retried automatically instead (see the queue).
+      sessionType: LegacyFileSystem.FileSystemSessionType.FOREGROUND,
       headers: {
         ...authHeaders(session),
         'X-Path': file.path,
@@ -363,6 +368,7 @@ export async function hashAndUpload(
   }
   if (result.status < 200 || result.status >= 300) {
     log('upload', `PUT ${file.path} failed (${result.status}): ${(result.body || '').slice(0, 500)}`);
+    if (result.status >= 500) throw new ServerError(result.body || `Upload failed (${result.status})`);
     throw new Error(result.body || `Upload failed (${result.status})`);
   }
   log('upload', `uploaded ${file.path} (${file.size} bytes)`);

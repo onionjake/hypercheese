@@ -16,6 +16,7 @@ import { flushLogs, log, logError } from './log';
 import { onNetworkChange, uploadAllowed } from './network';
 import {
   NetworkError,
+  ServerError,
   UploadInterrupted,
   flushShaCache,
   hashAndUpload,
@@ -791,13 +792,11 @@ async function drain(trigger: string, sess: Session): Promise<void> {
           const stat = await LegacyFileSystem.getInfoAsync(localUri);
           if (!stat.exists || stat.size === undefined) throw new Error('Could not stat file');
           item.size = stat.size;
+          // In memory only: a Photos-library path is resolved per run (iOS
+          // grants read access to it through PhotoKit for this process), so
+          // persisting it could hand a later launch a path it can't read.
           item.localUri = localUri;
-          await db.runAsync(
-            'UPDATE uploads SET size = ?, local_uri = ? WHERE key = ?',
-            stat.size,
-            localUri,
-            item.key
-          );
+          await db.runAsync('UPDATE uploads SET size = ? WHERE key = ?', stat.size, item.key);
           if (item.assetId) await setSize(item.assetId, stat.size);
         } catch (err) {
           logError('queue', `stat failed for ${item.filename}`, err);
@@ -882,10 +881,13 @@ async function drain(trigger: string, sess: Session): Promise<void> {
           }
         }
         logError('queue', `failed ${item.filename}`, err);
-        // A cut-off transfer while still online may be a blip (or a server
-        // restart) as easily as this file: fail it so the queue moves on,
-        // and let the next auto-retry try it once more before backing off.
-        await settle(item, 'failed', String(err), { retrySoon: interrupted });
+        // A cut-off transfer while still online, or a server 5xx, may be a
+        // blip (or a restart) as easily as this file: fail it so the queue
+        // moves on, and let the next auto-retry try it once more before
+        // backing off.
+        await settle(item, 'failed', String(err), {
+          retrySoon: interrupted || err instanceof ServerError,
+        });
       }
     }
   }
