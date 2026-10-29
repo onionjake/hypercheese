@@ -67,9 +67,13 @@ try {
 // iOS only: that's where suspension cuts transfers off. On Android the
 // process keeps running, so a background failure is a real one (and pausing
 // on it would re-send a file that always fails on every wakeup, unstruck).
-function wasBackgroundedSince(since: number): boolean {
+function wasBackgroundedSince(since: number, startedInBackground: boolean): boolean {
   if (Platform.OS !== 'ios') return false;
-  return AppState.currentState === 'background' || lastLeftForeground >= since;
+  // startedInBackground: a wakeup's attempt never sees a 'background' event,
+  // and its error may only surface after the app is opened again.
+  return (
+    startedInBackground || AppState.currentState === 'background' || lastLeftForeground >= since
+  );
 }
 // Finished rows stick around so the queue screen can show what happened, but
 // not forever.
@@ -569,6 +573,7 @@ export async function listItems(limit = 500): Promise<QueueItem[]> {
        WHEN status = 'queued' THEN 1
        WHEN status = 'failed' THEN 2
        ELSE 3 END,
+       deferrals,
        rowid
      LIMIT ?`,
     limit
@@ -801,6 +806,16 @@ export async function requeueDueRetries(): Promise<void> {
   log('queue', `re-queued ${rows.length} interrupted uploads`);
 }
 
+// A pause for connectivity says nothing about the file: give back the
+// attempt counted up front, so network flaps don't use up its deferrals or
+// push it behind the rest of the queue.
+async function uncountAttempt(key: string): Promise<void> {
+  const db = await openDb();
+  await db
+    .runAsync('UPDATE uploads SET deferrals = MAX(0, deferrals - 1) WHERE key = ?', key)
+    .catch(() => {});
+}
+
 class Paused extends Error {}
 
 async function drain(trigger: string, sess: Session): Promise<void> {
@@ -898,6 +913,7 @@ async function drain(trigger: string, sess: Session): Promise<void> {
       // Connectivity can change mid-run (leave the house, Wi-Fi drops).
       await ensureNetwork();
       const attemptStarted = Date.now();
+      const startedInBackground = AppState.currentState === 'background';
       // Counted up front, not when the transfer dies: if iOS kills the
       // suspended process there is no rejection to count it in, and the file
       // would be first in line again on relaunch. settle() clears it.
@@ -935,6 +951,7 @@ async function drain(trigger: string, sess: Session): Promise<void> {
         // time, and pausing on it would starve the rest of the queue.
         if (err instanceof NetworkError) {
           logError('queue', `network error on ${item.filename}, pausing queue`, err);
+          await uncountAttempt(item.key);
           throw new Paused(`Connection problem: ${err.message}`);
         }
         const interrupted = err instanceof UploadInterrupted;
@@ -942,6 +959,7 @@ async function drain(trigger: string, sess: Session): Promise<void> {
           const permission = await uploadAllowed().catch(() => null);
           if (permission && !permission.allowed) {
             logError('queue', `upload of ${item.filename} interrupted, pausing queue`, err);
+            await uncountAttempt(item.key);
             throw new Paused(permission.reason ?? 'Uploads paused');
           }
           // Cut off while the app was in the background (iOS suspends it, or
@@ -950,7 +968,7 @@ async function drain(trigger: string, sess: Session): Promise<void> {
           // big video can't hold up everything after it. A file that keeps
           // getting cut off (too big to finish in any window, or failing on
           // its own) is treated as a normal interruption after a few tries.
-          if (wasBackgroundedSince(attemptStarted)) {
+          if (wasBackgroundedSince(attemptStarted, startedInBackground)) {
             const row = await db.getFirstAsync<{ deferrals: number }>(
               'SELECT deferrals FROM uploads WHERE key = ?',
               item.key
