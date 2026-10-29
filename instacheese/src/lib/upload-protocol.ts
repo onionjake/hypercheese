@@ -29,7 +29,39 @@ export function extensionOf(name: string): string {
 // Keep the filename last so the extension stays visible to the importer.
 export function stablePath(assetId: string, filename: string): string {
   const id = assetId.replace(/[^A-Za-z0-9_-]/g, '_');
-  return `${id}/${filename}`;
+  return `${id}/${headerSafe(filename)}`;
+}
+
+// The path travels in the X-Path upload header, and Android's HTTP client
+// rejects header values outside printable ASCII — a name like "café.jpg"
+// would pass the manifest and hash steps (JSON bodies) and then fail every
+// upload attempt. Percent-encode just those characters: ASCII names (every
+// path already on a server) are unchanged.
+export function headerSafe(name: string): string {
+  return name.replace(/[^\x20-\x7e]/gu, (ch) => encodeURIComponent(ch));
+}
+
+// A transport-level failure (no connection, timeout) as opposed to the
+// server rejecting this particular file. The queue pauses on these instead
+// of marking the file failed.
+export class NetworkError extends Error {}
+
+// No request may hang the queue: React Native's Android client has no
+// default timeout, so a stalled connection would block the drain forever.
+const REQUEST_TIMEOUT_MS = 2 * 60 * 1000;
+
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: abort.signal });
+  } catch (err) {
+    throw new NetworkError(
+      abort.signal.aborted ? 'Request timed out' : `Network error: ${String(err)}`
+    );
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // The server stores mtime as an opaque string of seconds-since-epoch and, on
@@ -73,7 +105,7 @@ export function deviceParams(): string {
 }
 
 export async function postJson<T>(session: Session, path: string, body: unknown): Promise<T> {
-  const res = await fetch(session.baseUrl + path, {
+  const res = await fetchWithTimeout(session.baseUrl + path, {
     method: 'POST',
     headers: {
       ...authHeaders(session),
@@ -86,7 +118,13 @@ export async function postJson<T>(session: Session, path: string, body: unknown)
     log('api', `POST ${path} failed (${res.status}): ${text.slice(0, 500)}`);
     throw new Error(text || `Request failed (${res.status})`);
   }
-  return (await res.json()) as T;
+  try {
+    return (await res.json()) as T;
+  } catch (err) {
+    // The body is read after the timeout is cleared; a dropped connection
+    // mid-body is still a transport problem.
+    throw new NetworkError(`Could not read the server's response: ${String(err)}`);
+  }
 }
 
 function toHex(bytes: Uint8Array): string {
@@ -98,8 +136,10 @@ function toHex(bytes: Uint8Array): string {
 }
 
 // Above this size, reading the whole file into memory to hash it risks
-// crashing the app, so fall back to chunked reads + an incremental JS hash.
-const CHUNKED_HASH_THRESHOLD = 128 * 1024 * 1024;
+// running out of memory (the native read and the digest each hold their own
+// copy on the Java heap), so fall back to chunked reads + an incremental JS
+// hash.
+const CHUNKED_HASH_THRESHOLD = 24 * 1024 * 1024;
 const HASH_CHUNK_SIZE = 16 * 1024 * 1024;
 
 function base64ToBytes(b64: string): Uint8Array {
@@ -149,7 +189,27 @@ async function loadShaCache(): Promise<Record<string, string>> {
   return shaCache!;
 }
 
-async function saveShaCache(): Promise<void> {
+// Rewriting the whole cache after every hash is O(n²) over a first backup of
+// a big library (and blocks JS on JSON.stringify each time), so saves are
+// debounced. Losing the last few entries to a crash only costs a rehash.
+const SHA_CACHE_SAVE_MS = 10_000;
+let shaCacheTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleShaCacheSave(): void {
+  if (shaCacheTimer) return;
+  shaCacheTimer = setTimeout(() => {
+    shaCacheTimer = null;
+    flushShaCache();
+  }, SHA_CACHE_SAVE_MS);
+}
+
+// Write pending cache entries now; the queue calls this when a drain ends.
+export async function flushShaCache(): Promise<void> {
+  if (shaCacheTimer) {
+    clearTimeout(shaCacheTimer);
+    shaCacheTimer = null;
+  }
+  if (!shaCache) return;
   try {
     await LegacyFileSystem.writeAsStringAsync(SHA_CACHE_URI, JSON.stringify(shaCache));
   } catch {
@@ -170,7 +230,7 @@ export async function cachedSha256OfFile(
   const sha = await sha256OfFile(uri, size);
   if (cache && cacheKey) {
     cache[cacheKey] = sha;
-    await saveShaCache();
+    scheduleShaCacheSave();
   }
   return sha;
 }
@@ -247,9 +307,15 @@ export async function hashAndUpload(
       ? (data) => onProgress(data.totalBytesSent, data.totalBytesExpectedToSend)
       : undefined
   );
-  const result = await task.uploadAsync();
+  let result: Awaited<ReturnType<typeof task.uploadAsync>>;
+  try {
+    result = await task.uploadAsync();
+  } catch (err) {
+    // Connection dropped, timed out, or the OS cancelled the transfer.
+    throw new NetworkError(`Upload interrupted: ${String(err)}`);
+  }
   if (!result) {
-    throw new Error('Upload did not complete');
+    throw new NetworkError('Upload did not complete');
   }
   if (result.status < 200 || result.status >= 300) {
     log('upload', `PUT ${file.path} failed (${result.status}): ${(result.body || '').slice(0, 500)}`);

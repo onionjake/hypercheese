@@ -64,6 +64,16 @@ export default function QueueScreen() {
     queue.listItems().then(setItems);
   }, [total]);
 
+  // The list is capped, so on a big queue the drain eventually moves past the
+  // loaded rows; reload when the file in flight isn't among them.
+  const currentKey = summary.current?.key;
+  useEffect(() => {
+    if (currentKey && !items.some((i) => i.key === currentKey)) {
+      queue.listItems().then(setItems);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentKey]);
+
   const running = summary.state === 'running';
 
   const headline = running
