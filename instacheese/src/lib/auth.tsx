@@ -114,8 +114,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logError('auth', 'could not refresh current user', err);
         if (!stale() && err instanceof api.ApiError && err.status === 401) {
           authEpoch.current++;
-          await forgetAccountState();
+          // Session first: a background wakeup that reads it after the
+          // queue clear below must find nothing to re-seed the queue with.
           await SecureStore.deleteItemAsync(STORAGE_KEY);
+          await forgetAccountState();
           setSession(null);
           setUser(null);
           setStatus('signedOut');
@@ -195,8 +197,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // In token mode too: a stray browser cookie would otherwise outlive the
     // sign-out (see signIn).
     if (session) await api.sessionLogout(session);
-    await forgetAccountState();
+    // Stored session before the queue clear: a background wakeup in between
+    // would otherwise read it after the clear and re-queue this account's
+    // marks for whoever signs in next.
     await SecureStore.deleteItemAsync(STORAGE_KEY);
+    await forgetAccountState();
     setSession(null);
     setUser(null);
     setStatus('signedOut');
