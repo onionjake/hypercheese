@@ -12,7 +12,7 @@ import { Platform } from 'react-native';
 
 import * as api from './api';
 import type { Session } from './api';
-import { claimCatalog } from './library-db';
+import { claimCatalog, releaseCatalog } from './library-db';
 import { log, logError } from './log';
 import { clearTagCache } from './tags';
 import type { CurrentUser } from './types';
@@ -40,6 +40,14 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 async function forgetAccountState(): Promise<void> {
   clearTagCache();
   await clearUploadQueue().catch((err) => logError('auth', 'could not clear upload queue', err));
+  await releaseCatalog().catch((err) => logError('auth', 'could not release catalog', err));
+}
+
+// Identifies whose backup marks the library catalog holds. Scheme and a
+// leading www. are dropped so the same server typed two ways still matches.
+function accountKey(baseUrl: string, username: string): string {
+  const host = baseUrl.replace(/^https?:\/\//i, '').replace(/^www\./i, '').toLowerCase();
+  return `${host}|${username.trim().toLowerCase()}`;
 }
 
 // Also used outside React (the background upload task) to act on behalf of
@@ -161,7 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async function persist(newSession: Session, newUser: CurrentUser | null) {
       // Before the session goes live (and the upload queue starts): a
       // different account must not inherit this device's backup marks.
-      await claimCatalog(`${baseUrl}|${username.trim().toLowerCase()}`);
+      await claimCatalog(accountKey(baseUrl, username));
       clearTagCache();
       await SecureStore.setItemAsync(
         STORAGE_KEY,

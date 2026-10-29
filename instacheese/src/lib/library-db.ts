@@ -437,6 +437,15 @@ export async function markedForSync(
   return rows.map(rowToAsset);
 }
 
+// On sign-out: a catalog with no recorded owner (built before ownership was
+// tracked) gets an owner that matches nobody, so the next sign-in — possibly
+// a different account — can't adopt the previous account's marks. A
+// recorded owner is kept, so the same account signing back in loses nothing.
+export async function releaseCatalog(): Promise<void> {
+  const db = await openDb();
+  await db.runAsync("INSERT OR IGNORE INTO meta (key, value) VALUES ('account', '')");
+}
+
 // Backup decisions belong to the account that made them: a 'pending' mark
 // means "upload this to MY account", and 'synced' only says what one server
 // has. Called on every sign-in before the upload queue starts; when a

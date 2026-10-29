@@ -46,6 +46,12 @@ export function headerSafe(name: string): string {
 // of marking the file failed.
 export class NetworkError extends Error {}
 
+// The byte transfer itself died. Unlike a NetworkError on the small JSON
+// steps, this can be specific to the file (a proxy that resets uploads over
+// some size, a header the client refuses to send), so the queue only treats
+// it as connectivity when the device has actually lost the network.
+export class UploadInterrupted extends Error {}
+
 // No request may hang the queue: React Native's Android client has no
 // default timeout, so a stalled connection would block the drain forever.
 const REQUEST_TIMEOUT_MS = 2 * 60 * 1000;
@@ -312,10 +318,10 @@ export async function hashAndUpload(
     result = await task.uploadAsync();
   } catch (err) {
     // Connection dropped, timed out, or the OS cancelled the transfer.
-    throw new NetworkError(`Upload interrupted: ${String(err)}`);
+    throw new UploadInterrupted(`Upload interrupted: ${String(err)}`);
   }
   if (!result) {
-    throw new NetworkError('Upload did not complete');
+    throw new UploadInterrupted('Upload did not complete');
   }
   if (result.status < 200 || result.status >= 300) {
     log('upload', `PUT ${file.path} failed (${result.status}): ${(result.body || '').slice(0, 500)}`);

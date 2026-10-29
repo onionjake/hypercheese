@@ -9,6 +9,7 @@ import { flushLogs, log, logError } from './log';
 import { onNetworkChange, uploadAllowed } from './network';
 import {
   NetworkError,
+  UploadInterrupted,
   flushShaCache,
   hashAndUpload,
   manifestCheck,
@@ -165,6 +166,7 @@ function serialized<T>(fn: () => Promise<T>): Promise<T> {
 let session: Session | null = null;
 let runPromise: Promise<void> | null = null;
 let stopRequested = false;
+let stoppedByUser = false; // a Stop press, as opposed to the OS ending a run
 let pendingKick = false; // a kick arrived while a drain was winding down
 let pausedReason: string | null = null;
 let current: QueueCurrent | null = null;
@@ -576,10 +578,15 @@ async function settle(item: QueueItem, status: 'done' | 'exists' | 'failed', err
   );
   item.status = status;
   if (item.assetId) {
+    // Guarded by mtime so an upload of a photo's old version (edited
+    // mid-upload) can't mark the new one backed up. Picker items skip the
+    // guard: their mtime falls back to the temp copy's when the original's
+    // can't be read, and would never match.
+    const version = item.source === 'picker' ? undefined : item.mtime;
     if (status !== 'failed') {
-      await markStatus(item.assetId, 'synced', null, item.mtime);
+      await markStatus(item.assetId, 'synced', null, version);
     } else if (item.source === 'backup') {
-      await markStatus(item.assetId, 'failed', item.error, item.mtime);
+      await markStatus(item.assetId, 'failed', item.error, version);
     }
   }
   // Track counts in memory rather than re-aggregating the table per item;
@@ -610,13 +617,6 @@ async function resetInFlight(): Promise<void> {
 }
 
 class Paused extends Error {}
-
-// A file whose transfer keeps dying at the network level (e.g. a proxy that
-// resets connections over some size) would otherwise pause the whole queue
-// on every retry; after this many consecutive network failures it is marked
-// failed so the rest of the queue can move.
-const MAX_NETWORK_STRIKES = 3;
-const networkStrikes = new Map<string, number>();
 
 async function drain(trigger: string, sess: Session): Promise<void> {
   const db = await openDb();
@@ -738,20 +738,24 @@ async function drain(trigger: string, sess: Session): Promise<void> {
           },
           onUploadProgress
         );
-        networkStrikes.delete(item.key);
         await settle(item, outcome === 'deduped' ? 'exists' : 'done');
       } catch (err) {
         if (err instanceof Paused) throw err;
+        // Connectivity, not this file: leave it queued and pause. The JSON
+        // steps carry nothing file-specific, so their transport failures
+        // always count; a dead byte transfer only does when the device is
+        // actually offline now — otherwise it may fail the same way every
+        // time, and pausing on it would starve the rest of the queue.
         if (err instanceof NetworkError) {
-          // Connectivity, not this file: leave it queued and pause, unless
-          // this file keeps failing this way on its own.
-          const strikes = (networkStrikes.get(item.key) ?? 0) + 1;
-          networkStrikes.set(item.key, strikes);
-          if (strikes < MAX_NETWORK_STRIKES) {
-            logError('queue', `network error on ${item.filename}, pausing queue`, err);
-            throw new Paused(`Connection problem: ${err.message}`);
+          logError('queue', `network error on ${item.filename}, pausing queue`, err);
+          throw new Paused(`Connection problem: ${err.message}`);
+        }
+        if (err instanceof UploadInterrupted) {
+          const permission = await uploadAllowed().catch(() => null);
+          if (permission && !permission.allowed) {
+            logError('queue', `upload of ${item.filename} interrupted, pausing queue`, err);
+            throw new Paused(permission.reason ?? 'Uploads paused');
           }
-          networkStrikes.delete(item.key);
         }
         logError('queue', `failed ${item.filename}`, err);
         await settle(item, 'failed', String(err));
@@ -774,6 +778,7 @@ export function kick(trigger: string): Promise<void> {
   if (!session) return Promise.resolve();
   const sess = session;
   stopRequested = false;
+  stoppedByUser = false;
   pausedReason = null;
   runPromise = drain(trigger, sess)
     .catch((err) => {
@@ -801,10 +806,12 @@ export function kick(trigger: string): Promise<void> {
 }
 
 // Stop after the current file; everything else stays queued (auto-retry or
-// the next manual kick resumes it).
-export function stop(): void {
+// the next manual kick resumes it). `byUser: false` is for the OS ending a
+// background window — an auto-retry arriving meanwhile resumes right after.
+export function stop(opts: { byUser?: boolean } = {}): void {
   if (!runPromise) return;
   stopRequested = true;
+  stoppedByUser = opts.byUser ?? true;
   pendingKick = false;
   pausedReason = 'Stopped';
   broadcastSummary();
@@ -825,7 +832,8 @@ export function startAutoRetry(s: Session): () => void {
       // A drain winding down (e.g. stopped when the background window
       // expired) would otherwise swallow this retry until the next interval.
       if (runPromise) {
-        pendingKick = true;
+        // ...but a Stop press gets to finish winding down first.
+        if (!stoppedByUser) pendingKick = true;
         return;
       }
       // Cheap aggregate first; the full selected-assets fetch only runs when
