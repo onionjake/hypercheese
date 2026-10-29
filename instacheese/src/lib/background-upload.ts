@@ -31,7 +31,7 @@ TaskManager.defineTask(UPLOAD_TASK, async () => {
     queue.setSession({ baseUrl: stored.baseUrl, mode: stored.mode, token: stored.token });
     // Same work an in-app auto-retry does: re-queue anything marked for
     // backup, then drain until done, paused (network), or the OS calls time.
-    await queue.enqueueBackupPending();
+    await queue.enqueueBackupPending({ failedRetryAfterMs: queue.FAILED_RETRY_MS });
     await queue.kick('background');
     // Piggyback on the wakeup: freshen the catalog and keep the nightly
     // mark reminder's count/schedule current while the app stays closed.

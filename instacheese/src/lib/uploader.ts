@@ -6,6 +6,7 @@ import * as MediaLibrary from 'expo-media-library/legacy';
 
 import { log } from './log';
 import {
+  MEDIA_PERMISSIONS,
   SUPPORTED_EXTENSIONS,
   assetMtime,
   extensionOf,
@@ -48,8 +49,10 @@ function fileNameFor(asset: ImagePickerAsset, index: number): string {
 async function originalMtimes(assets: ImagePickerAsset[]): Promise<(number | null)[]> {
   if (!assets.some((a) => a.assetId)) return assets.map(() => null);
   try {
-    const perm = await MediaLibrary.getPermissionsAsync();
-    if (!perm.granted && perm.canAskAgain) await MediaLibrary.requestPermissionsAsync();
+    const perm = await MediaLibrary.getPermissionsAsync(false, MEDIA_PERMISSIONS);
+    if (!perm.granted && perm.canAskAgain) {
+      await MediaLibrary.requestPermissionsAsync(false, MEDIA_PERMISSIONS);
+    }
   } catch {
     // proceed; per-asset lookups below have their own fallback
   }

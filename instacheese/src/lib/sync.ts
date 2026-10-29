@@ -7,6 +7,7 @@ import { type Session } from './api';
 import { log, logError } from './log';
 import { uploadAllowed } from './network';
 import {
+  MEDIA_PERMISSIONS,
   SUPPORTED_EXTENSIONS,
   assetMtime,
   extensionOf,
@@ -93,7 +94,7 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
 
   const run = async () => {
     await ensureNetwork();
-    const permission = await MediaLibrary.requestPermissionsAsync();
+    const permission = await MediaLibrary.requestPermissionsAsync(false, MEDIA_PERMISSIONS);
     if (!permission.granted) {
       status.phase = 'error';
       status.lastError = 'Photo library permission is required to sync';
@@ -103,6 +104,7 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
     log('sync', 'full sync scan started');
 
     const sizeCache = await loadSizeCache();
+    const queueEpoch = queue.currentEpoch();
     // Files the server asked for, including ones already waiting in the
     // queue (which enqueue() doesn't count as newly queued).
     let needed = 0;
@@ -174,7 +176,8 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
             path: c.path,
             mtime: c.mtime,
             size: c.size,
-          }))
+          })),
+          { epoch: queueEpoch }
         );
         queue.kick('sync');
       }

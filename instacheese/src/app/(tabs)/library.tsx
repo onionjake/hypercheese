@@ -131,7 +131,7 @@ export default function LibraryScreen() {
     setScanning(true);
     setLoadError(null);
     try {
-      await refreshFromLibrary(setScanCount);
+      await refreshFromLibrary({ onProgress: setScanCount });
       await loadPage(true);
       await refreshCounts();
     } catch (err) {

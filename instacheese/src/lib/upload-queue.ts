@@ -30,6 +30,11 @@ import {
 
 const BATCH_SIZE = 200;
 const RETRY_INTERVAL_MS = 15 * 60 * 1000;
+// Automatic retries leave a failed backup alone this long after it failed:
+// failures are now file-specific (connectivity pauses instead), and
+// re-sending, say, a video the server rejects on every interval wastes data
+// and holds up newer photos. "Back up" and Retry still retry right away.
+export const FAILED_RETRY_MS = 6 * 60 * 60 * 1000;
 // Finished rows stick around so the queue screen can show what happened, but
 // not forever.
 const FINISHED_TTL_MS = 24 * 60 * 60 * 1000;
@@ -164,6 +169,13 @@ function serialized<T>(fn: () => Promise<T>): Promise<T> {
 // --- State + events ----------------------------------------------------------
 
 let session: Session | null = null;
+// Bumped by clearAll (sign-out). Work that started under an earlier epoch —
+// a sync scan's manifest, a slow backup enqueue — must not insert rows after
+// the clear, or the next account to sign in would upload them.
+let epoch = 0;
+export function currentEpoch(): number {
+  return epoch;
+}
 let runPromise: Promise<void> | null = null;
 let stopRequested = false;
 let stoppedByUser = false; // a Stop press, as opposed to the OS ending a run
@@ -260,9 +272,17 @@ export function setSession(s: Session): void {
 // re-verified against the server manifest again.) Returns how many items
 // were NEWLY queued — upserts onto rows that were already waiting don't
 // count, so callers (the sync scan) don't double-report.
-export function enqueue(items: NewQueueItem[]): Promise<number> {
+export function enqueue(
+  items: NewQueueItem[],
+  opts: { epoch?: number } = {}
+): Promise<number> {
   if (items.length === 0) return Promise.resolve(0);
+  const startedIn = opts.epoch ?? epoch;
   return serialized(async () => {
+    if (startedIn !== epoch) {
+      log('queue', `dropped ${items.length} items enqueued before a sign-out`);
+      return 0;
+    }
     const db = await openDb();
     const now = Date.now();
     const activeKey = current?.key;
@@ -372,9 +392,10 @@ export function enqueue(items: NewQueueItem[]): Promise<number> {
 // history, so only deliberate re-verification flows should pass it — routine
 // "Back up" presses and auto-retries must stay O(pending).
 export async function enqueueBackupPending(
-  opts: { includeSynced?: boolean } = {}
+  opts: { includeSynced?: boolean; failedRetryAfterMs?: number } = {}
 ): Promise<number> {
   const started = Date.now();
+  const startedIn = epoch;
   const assets = await markedForSync(opts);
   if (assets.length === 0) return 0;
   // Persist this line before the enqueue: if the process dies in there, the
@@ -391,7 +412,8 @@ export async function enqueueBackupPending(
       path: stablePath(a.id, a.filename),
       mtime: a.mtime,
       size: a.size,
-    }))
+    })),
+    { epoch: startedIn }
   );
   log('queue', `backup enqueue done: ${queued} newly queued (${Date.now() - started}ms)`);
   return queued;
@@ -424,11 +446,14 @@ export async function removeQueued(keys: string[], source?: QueueSource): Promis
 // Forget the queue entirely. Called on sign-out so the next account on this
 // device can never drain (upload) the previous account's photos.
 export async function clearAll(): Promise<void> {
+  epoch++;
   stopRequested = true;
   pendingKick = false;
   session = null;
   const db = await openDb();
-  await db.runAsync('DELETE FROM uploads');
+  // Behind any enqueue already holding the write chain, so its rows are
+  // deleted rather than landing after the DELETE.
+  await serialized(() => db.runAsync('DELETE FROM uploads'));
   pausedReason = null;
   await refreshAndBroadcast();
 }
@@ -791,10 +816,19 @@ export function kick(trigger: string): Promise<void> {
       logError('queue', 'drain crashed', err);
     })
     .finally(async () => {
-      runPromise = null;
       current = null;
-      await flushShaCache();
-      await resetInFlight();
+      try {
+        await flushShaCache();
+        await resetInFlight();
+      } catch (err) {
+        // Must not skip clearing runPromise below, or the queue would read
+        // as running forever; the next drain resets in-flight rows anyway.
+        logError('queue', 'drain cleanup failed', err);
+      }
+      // Only now: a kick during the cleanup above becomes a pending kick
+      // instead of a new drain whose in-flight rows resetInFlight would
+      // flip back to 'queued'.
+      runPromise = null;
       await refreshAndBroadcast();
       if (pendingKick) {
         pendingKick = false;
@@ -839,7 +873,9 @@ export function startAutoRetry(s: Session): () => void {
       // Cheap aggregate first; the full selected-assets fetch only runs when
       // something is actually marked for backup but not uploaded.
       const catalog = await libraryCounts();
-      if (catalog.pending > 0) await enqueueBackupPending();
+      if (catalog.pending > 0) {
+        await enqueueBackupPending({ failedRetryAfterMs: FAILED_RETRY_MS });
+      }
       await refreshCounts();
       if (counts.remaining > 0) kick(`auto:${trigger}`);
     } catch (err) {
