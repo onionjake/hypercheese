@@ -103,6 +103,9 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
     log('sync', 'full sync scan started');
 
     const sizeCache = await loadSizeCache();
+    // Files the server asked for, including ones already waiting in the
+    // queue (which enqueue() doesn't count as newly queued).
+    let needed = 0;
     let after: string | undefined;
     let hasNextPage = true;
 
@@ -159,6 +162,7 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
       const neededPaths = await manifestCheck(session, candidates);
       const work = candidates.filter((c) => neededPaths.has(c.path));
       status.counts.upToDate += candidates.length - work.length;
+      needed += work.length;
       if (work.length > 0) {
         status.counts.queued += await queue.enqueue(
           work.map((c) => ({
@@ -184,7 +188,9 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
         ? 'Cancelled'
         : status.counts.queued > 0
           ? `Scan complete — ${status.counts.queued} queued for upload`
-          : 'Scan complete — everything is already on the server'
+          : needed > 0
+            ? `Scan complete — ${needed} already in the upload queue`
+            : 'Scan complete — everything is already on the server'
     );
   };
 

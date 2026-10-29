@@ -213,6 +213,13 @@ async function runScan(onProgress?: (scanned: number) => void): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
+  // With limited ("selected photos") access the library only shows a
+  // subset; pruning everything else would throw away backup marks and
+  // won't-upload decisions for photos that still exist.
+  if (permission.accessPrivileges === 'limited') {
+    log('library', `scan complete (limited access, not pruning): ${scanned} assets`);
+    return;
+  }
   const removed = await db.runAsync('DELETE FROM assets WHERE last_seen != ?', generation);
   log(
     'library',
@@ -382,13 +389,27 @@ export async function excludeSelected(): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
+// With `mtime`, only touches the row if the catalog still has that version:
+// an upload of the old version of a photo edited mid-upload must not mark
+// the new version backed up.
 export async function markStatus(
   id: string,
   status: AssetStatus,
-  error: string | null = null
+  error: string | null = null,
+  mtime?: number
 ): Promise<void> {
   const db = await openDb();
-  await db.runAsync('UPDATE assets SET status = ?, error = ? WHERE id = ?', status, error, id);
+  if (mtime === undefined) {
+    await db.runAsync('UPDATE assets SET status = ?, error = ? WHERE id = ?', status, error, id);
+  } else {
+    await db.runAsync(
+      'UPDATE assets SET status = ?, error = ? WHERE id = ? AND mtime = ?',
+      status,
+      error,
+      id,
+      mtime
+    );
+  }
 }
 
 export async function setSize(id: string, size: number): Promise<void> {

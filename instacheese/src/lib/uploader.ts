@@ -1,12 +1,15 @@
 import { File } from 'expo-file-system';
 import type { ImagePickerAsset } from 'expo-image-picker';
-import * as MediaLibrary from 'expo-media-library';
+// The legacy entry point: the root export's getAssetInfoAsync is a stub that
+// always throws in this SDK, which silently fell back to the pick time.
+import * as MediaLibrary from 'expo-media-library/legacy';
 
 import { log } from './log';
 import {
   SUPPORTED_EXTENSIONS,
   assetMtime,
   extensionOf,
+  headerSafe,
   stablePath,
 } from './upload-protocol';
 import * as queue from './upload-queue';
@@ -85,7 +88,7 @@ export async function prepareFiles(assets: ImagePickerAsset[]): Promise<UploadFi
     // and stable across picks, so re-picking the same photo matches the
     // server's manifest instead of re-hashing. Bare filenames (no assetId)
     // remain as a fallback but collide on repeated names like IMG_0001.jpg.
-    const path = asset.assetId ? stablePath(asset.assetId, name) : name;
+    const path = asset.assetId ? stablePath(asset.assetId, name) : headerSafe(name);
     const supported = SUPPORTED_EXTENSIONS.has(extensionOf(name));
     return {
       key: asset.assetId ? queue.assetKey(asset.assetId) : `picker:${asset.uri}`,

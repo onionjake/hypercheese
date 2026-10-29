@@ -7,7 +7,13 @@ import { type Session } from './api';
 import { libraryCounts, markStatus, markedForSync, setSize } from './library-db';
 import { flushLogs, log, logError } from './log';
 import { onNetworkChange, uploadAllowed } from './network';
-import { hashAndUpload, manifestCheck, stablePath } from './upload-protocol';
+import {
+  NetworkError,
+  flushShaCache,
+  hashAndUpload,
+  manifestCheck,
+  stablePath,
+} from './upload-protocol';
 
 // The consolidated upload queue shared by all three upload flows (picker
 // shares, backup selections, full-library sync). Screens only ever enqueue
@@ -571,9 +577,9 @@ async function settle(item: QueueItem, status: 'done' | 'exists' | 'failed', err
   item.status = status;
   if (item.assetId) {
     if (status !== 'failed') {
-      await markStatus(item.assetId, 'synced', null);
+      await markStatus(item.assetId, 'synced', null, item.mtime);
     } else if (item.source === 'backup') {
-      await markStatus(item.assetId, 'failed', item.error);
+      await markStatus(item.assetId, 'failed', item.error, item.mtime);
     }
   }
   // Track counts in memory rather than re-aggregating the table per item;
@@ -604,6 +610,13 @@ async function resetInFlight(): Promise<void> {
 }
 
 class Paused extends Error {}
+
+// A file whose transfer keeps dying at the network level (e.g. a proxy that
+// resets connections over some size) would otherwise pause the whole queue
+// on every retry; after this many consecutive network failures it is marked
+// failed so the rest of the queue can move.
+const MAX_NETWORK_STRIKES = 3;
+const networkStrikes = new Map<string, number>();
 
 async function drain(trigger: string, sess: Session): Promise<void> {
   const db = await openDb();
@@ -671,6 +684,9 @@ async function drain(trigger: string, sess: Session): Promise<void> {
       }
       candidates.push(item);
     }
+    // Nothing is in flight during the manifest; a lingering `current` would
+    // make removeQueued() skip that item.
+    current = null;
     if (stopRequested || candidates.length === 0) continue;
 
     // The server's manifest decides what actually needs work. A manifest
@@ -700,8 +716,11 @@ async function drain(trigger: string, sess: Session): Promise<void> {
       // Connectivity can change mid-run (leave the house, Wi-Fi drops).
       await ensureNetwork();
       try {
-        const localUri = await resolveLocalUri(item);
+        // Claim the item before resolving its file: that can take seconds
+        // (iCloud download), and removeQueued() must not delete a row the
+        // drain is about to upload anyway.
         setCurrent(item, 'hashing');
+        const localUri = await resolveLocalUri(item);
         const outcome = await hashAndUpload(
           sess,
           {
@@ -719,9 +738,21 @@ async function drain(trigger: string, sess: Session): Promise<void> {
           },
           onUploadProgress
         );
+        networkStrikes.delete(item.key);
         await settle(item, outcome === 'deduped' ? 'exists' : 'done');
       } catch (err) {
         if (err instanceof Paused) throw err;
+        if (err instanceof NetworkError) {
+          // Connectivity, not this file: leave it queued and pause, unless
+          // this file keeps failing this way on its own.
+          const strikes = (networkStrikes.get(item.key) ?? 0) + 1;
+          networkStrikes.set(item.key, strikes);
+          if (strikes < MAX_NETWORK_STRIKES) {
+            logError('queue', `network error on ${item.filename}, pausing queue`, err);
+            throw new Paused(`Connection problem: ${err.message}`);
+          }
+          networkStrikes.delete(item.key);
+        }
         logError('queue', `failed ${item.filename}`, err);
         await settle(item, 'failed', String(err));
       }
@@ -757,6 +788,7 @@ export function kick(trigger: string): Promise<void> {
     .finally(async () => {
       runPromise = null;
       current = null;
+      await flushShaCache();
       await resetInFlight();
       await refreshAndBroadcast();
       if (pendingKick) {
@@ -790,7 +822,12 @@ export function startAutoRetry(s: Session): () => void {
 
   const tryKick = async (trigger: string) => {
     try {
-      if (runPromise) return;
+      // A drain winding down (e.g. stopped when the background window
+      // expired) would otherwise swallow this retry until the next interval.
+      if (runPromise) {
+        pendingKick = true;
+        return;
+      }
       // Cheap aggregate first; the full selected-assets fetch only runs when
       // something is actually marked for backup but not uploaded.
       const catalog = await libraryCounts();
