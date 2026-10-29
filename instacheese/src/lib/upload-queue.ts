@@ -13,7 +13,7 @@ import {
   sweepPairedVideoLeftovers,
 } from './library-db';
 import { flushLogs, log, logError } from './log';
-import { onNetworkChange, uploadAllowed } from './network';
+import { onNetworkChange, uploadAllowed, uploadAllowedRecently } from './network';
 import {
   NetworkError,
   ServerError,
@@ -860,6 +860,10 @@ async function drain(trigger: string, sess: Session): Promise<void> {
     for (const item of batch) {
       if (stopRequested) break;
       if (item.size == null || item.size === 0) {
+        // Resolving the file can download the original from iCloud, so the
+        // network rule applies per item, not just once per batch.
+        const permission = await uploadAllowedRecently();
+        if (!permission.allowed) throw new Paused(permission.reason ?? 'Uploads paused');
         try {
           setCurrent(item, 'checking');
           const localUri = await resolveLocalUri(item);

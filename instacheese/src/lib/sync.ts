@@ -6,7 +6,7 @@ import * as MediaLibrary from 'expo-media-library/legacy';
 import { type Session } from './api';
 import { excludedAssetIds, sweepPairedVideoLeftovers } from './library-db';
 import { log, logError } from './log';
-import { uploadAllowed } from './network';
+import { uploadAllowed, uploadAllowedRecently } from './network';
 import {
   MEDIA_PERMISSIONS,
   assetMtime,
@@ -113,6 +113,9 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
     let hasNextPage = true;
 
     while (hasNextPage && !cancelled) {
+      // Re-checked as the scan goes: size lookups can download originals
+      // from iCloud, and the phone may have left Wi-Fi since the scan began.
+      await ensureNetwork();
       emit(`Scanning library… (${status.counts.scanned})`);
       const page = await MediaLibrary.getAssetsAsync({
         first: PAGE_SIZE,
@@ -144,6 +147,10 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
         const cacheKey = `${asset.id}:${mtime}`;
         let size = sizeCache[cacheKey];
         if (size === undefined) {
+          const netPermission = await uploadAllowedRecently();
+          if (!netPermission.allowed) {
+            throw new Error(netPermission.reason ?? 'Uploads paused');
+          }
           try {
             const localUri = await queue.libraryLocalUri(asset.id, asset.uri);
             const stat = await LegacyFileSystem.getInfoAsync(localUri);

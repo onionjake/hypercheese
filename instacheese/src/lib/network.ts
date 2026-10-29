@@ -46,6 +46,17 @@ export async function uploadAllowed(): Promise<UploadPermission> {
   return { allowed: true, reason: null };
 }
 
+// For loops that check before every item (each iOS library lookup can pull
+// an original down from iCloud): reuses an answer up to `maxAgeMs` old
+// instead of a native round trip per item.
+let recent: { at: number; result: UploadPermission } | null = null;
+export async function uploadAllowedRecently(maxAgeMs = 5000): Promise<UploadPermission> {
+  if (recent && Date.now() - recent.at < maxAgeMs) return recent.result;
+  const result = await uploadAllowed();
+  recent = { at: Date.now(), result };
+  return result;
+}
+
 // Fires when connectivity changes in a way that might newly allow uploads.
 export function onNetworkChange(fn: () => void): () => void {
   return NetInfo.addEventListener(() => fn());
