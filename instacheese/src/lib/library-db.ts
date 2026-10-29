@@ -356,7 +356,7 @@ async function runScan(
            ${ASSET_UPSERT_TAIL}`,
           ...rows.flatMap((asset) => [
             asset.id,
-            asset.filename,
+            asset.filename ?? '',
             asset.mediaType,
             asset.uri,
             assetMtime(asset),

@@ -53,14 +53,15 @@ export const SUPPORTED_EXTENSIONS = new Set([
 // (iOS slow-motion videos are uploaded from their original high-frame-rate
 // file — see slowMotionOriginal — never from the legacy API's re-encode.)
 export function isBackupSupported(asset: {
-  filename: string;
+  filename: string | null;
   mediaSubtypes?: string[] | null;
 }): boolean {
   return SUPPORTED_EXTENSIONS.has(extensionOf(asset.filename));
 }
 
-export function extensionOf(name: string): string {
-  const match = name.match(/\.(\w+)$/);
+export function extensionOf(name: string | null | undefined): string {
+  // Some Android MediaStore rows have no display name.
+  const match = (name ?? '').match(/\.(\w+)$/);
   return match ? match[1].toLowerCase() : '';
 }
 
