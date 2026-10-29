@@ -8,7 +8,7 @@ import {
   libraryCounts,
   markStatus,
   markedForSync,
-  slowMotionOriginalUri,
+  slowMotionOriginal,
   resetFailures,
   setSize,
   sweepPairedVideoLeftovers,
@@ -598,9 +598,13 @@ export async function libraryLocalUri(
   assetId: string,
   fallbackUri: string | null
 ): Promise<string> {
-  // iOS slow-motion videos upload their original source file.
-  const original = await slowMotionOriginalUri(assetId);
-  if (original) return original;
+  // iOS slow-motion videos upload their original source file — never the
+  // legacy lookup's re-encode.
+  const slowMo = await slowMotionOriginal(assetId);
+  if (slowMo.kind === 'original') return slowMo.uri;
+  if (slowMo.kind === 'unavailable') {
+    throw new Error('This slow-motion video isn’t downloaded to this phone — open it in Photos, then retry');
+  }
   let info: Awaited<ReturnType<typeof assetInfo>>;
   try {
     info = await assetInfo(assetId);

@@ -51,7 +51,7 @@ export const SUPPORTED_EXTENSIONS = new Set([
 
 // Whether a media-library asset can be backed up: a supported extension.
 // (iOS slow-motion videos are uploaded from their original high-frame-rate
-// file — see originalFileUri — never from the legacy API's re-encode.)
+// file — see slowMotionOriginal — never from the legacy API's re-encode.)
 export function isBackupSupported(asset: {
   filename: string;
   mediaSubtypes?: string[] | null;
