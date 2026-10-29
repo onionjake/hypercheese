@@ -40,6 +40,12 @@ export default function FeedScreen() {
   const [error, setError] = useState<string | null>(null);
   const loadingRef = useRef(false);
   const modeRef = useRef(mode);
+  // Bumped on every mode switch: a response (or finally block) from an older
+  // generation must neither touch state nor hold the loading lock.
+  const generationRef = useRef(0);
+  // Toggle requests in flight, by `${id}:${field}` — each POST flips server
+  // state, so a second tap before the first answers would race it.
+  const togglesInFlight = useRef(new Set<string>());
 
   const canWrite = !!user?.can_write;
 
@@ -48,6 +54,7 @@ export default function FeedScreen() {
       if (!session || loadingRef.current) return;
       loadingRef.current = true;
       setError(null);
+      const generation = generationRef.current;
       const requestMode = modeRef.current;
       const refresh = opts.refresh || items.length === 0;
       const started = Date.now();
@@ -62,14 +69,17 @@ export default function FeedScreen() {
         });
         log('feed', `loaded ${page.items.length} of ${page.total} (${Date.now() - started}ms)`);
         // Ignore responses that raced with a mode switch.
-        if (modeRef.current !== requestMode) return;
+        if (generationRef.current !== generation) return;
         setSearchKey(page.searchKey);
         setTotal(page.total);
         setItems((prev) => (refresh ? page.items : [...prev, ...page.items]));
       } catch (err) {
         logError('feed', `load failed after ${Date.now() - started}ms`, err);
+        if (generationRef.current !== generation) return;
         setError(err instanceof Error ? err.message : 'Could not load the feed');
       } finally {
+        // A mode switch already released the lock for the new mode's load.
+        if (generationRef.current !== generation) return;
         loadingRef.current = false;
         setRefreshing(false);
         setLoadingMore(false);
@@ -82,10 +92,19 @@ export default function FeedScreen() {
     if (session && items.length === 0 && total === null) {
       loadPage({ refresh: true });
     }
-  }, [session, items.length, total, loadPage]);
+    // `mode` is a dependency so a switch always re-runs this, even when the
+    // reset below leaves items/total unchanged (e.g. mid first load).
+  }, [session, items.length, total, loadPage, mode]);
 
   const switchMode = (next: FeedMode) => {
     if (next === mode) return;
+    // Abandon whatever is in flight for the old mode so the new mode's load
+    // isn't blocked by its lock.
+    generationRef.current++;
+    loadingRef.current = false;
+    setRefreshing(false);
+    setLoadingMore(false);
+    setError(null);
     setMode(next);
     modeRef.current = next;
     setItems([]);
@@ -106,21 +125,27 @@ export default function FeedScreen() {
     }
   };
 
-  const replaceItem = (updated: FeedItem) => {
-    setItems((prev) => prev.map((it) => (it.id === updated.id ? updated : it)));
-  };
-
   const toggle = async (
     item: FeedItem,
     field: 'bullhorned' | 'starred',
     call: (s: api.Session, id: number) => Promise<FeedItem>
   ) => {
     if (!session) return;
-    replaceItem({ ...item, [field]: !item[field] });
+    const inFlightKey = `${item.id}:${field}`;
+    if (togglesInFlight.current.has(inFlightKey)) return;
+    togglesInFlight.current.add(inFlightKey);
+    const patchField = (value: boolean) =>
+      setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, [field]: value } : it)));
+    patchField(!item[field]);
     try {
-      replaceItem(await call(session, item.id));
+      // Take only this field from the response: another toggle on the same
+      // item may still be in flight and its optimistic value must survive.
+      const updated = await call(session, item.id);
+      patchField(updated[field]);
     } catch {
-      replaceItem(item);
+      patchField(item[field]);
+    } finally {
+      togglesInFlight.current.delete(inFlightKey);
     }
   };
 
