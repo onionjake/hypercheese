@@ -106,9 +106,6 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
     log('sync', 'full sync scan started');
 
     const sizeCache = await loadSizeCache();
-    // "Uploads your whole camera roll" still means minus what the user
-    // explicitly said must never be uploaded.
-    const excluded = await excludedAssetIds();
     const queueEpoch = queue.currentEpoch();
     // Files the server asked for, including ones already waiting in the
     // queue (which enqueue() doesn't count as newly queued).
@@ -126,6 +123,10 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
       });
       hasNextPage = page.hasNextPage;
       after = page.endCursor;
+      // "Uploads your whole camera roll" still means minus what the user
+      // explicitly said must never be uploaded — re-read per page so a mark
+      // made while the scan runs is honoured too.
+      const excluded = await excludedAssetIds();
 
       // Resolve sizes so the manifest can be built for this page.
       const candidates: Candidate[] = [];
