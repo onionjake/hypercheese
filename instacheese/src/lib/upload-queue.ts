@@ -1001,7 +1001,11 @@ async function drain(trigger: string, sess: Session): Promise<void> {
           // Wi-Fi may have gone while a big file was hashing: don't start
           // a multi-GB transfer over mobile data.
           async () => {
-            const permission = await uploadAllowed();
+            // A failing check (settings/NetInfo) says nothing about the file.
+            const permission = await uploadAllowed().catch(() => ({
+              allowed: false,
+              reason: 'Could not check the network',
+            }));
             if (!permission.allowed) {
               await uncountAttempt(item.key);
               throw new Paused(permission.reason ?? 'Uploads paused');
