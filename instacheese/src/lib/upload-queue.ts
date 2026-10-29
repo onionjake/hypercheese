@@ -1,6 +1,6 @@
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import * as SQLite from 'expo-sqlite';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { type Session } from './api';
 import {
@@ -43,6 +43,29 @@ const RETRY_INTERVAL_MS = 15 * 60 * 1000;
 // re-sending, say, a video the server rejects on every interval wastes data
 // and holds up newer photos. "Back up" and Retry still retry right away.
 export const FAILED_RETRY_MS = 6 * 60 * 60 * 1000;
+// Scheduled retries for a picker/sync row before it is left to expire: a
+// file the server rejects with a 5xx every time would otherwise be re-sent
+// in full every FAILED_RETRY_MS forever.
+const MAX_AUTO_RETRIES = 4;
+
+// When the app last left the foreground. A transfer that dies while the app
+// is (or was) in the background was most likely cut off by iOS suspending
+// it, which says nothing about the file — so it isn't counted as a failure.
+let lastLeftForeground = 0;
+try {
+  AppState.addEventListener('change', (state) => {
+    if (state !== 'active') lastLeftForeground = Date.now();
+  });
+} catch {
+  // unavailable in some headless contexts; AppState.currentState still works
+}
+// iOS only: that's where suspension cuts transfers off. On Android the
+// process keeps running, so a background failure is a real one (and pausing
+// on it would re-send a file that always fails on every wakeup, unstruck).
+function wasBackgroundedSince(since: number): boolean {
+  if (Platform.OS !== 'ios') return false;
+  return AppState.currentState !== 'active' || lastLeftForeground >= since;
+}
 // Finished rows stick around so the queue screen can show what happened, but
 // not forever.
 const FINISHED_TTL_MS = 24 * 60 * 60 * 1000;
@@ -672,7 +695,11 @@ async function settle(
   const scheduleRetry = status === 'failed' && !!opts.retrySoon && item.source !== 'backup';
   await db.runAsync(
     `UPDATE uploads SET status = ?, error = ?, updated_at = ?,
-       retry_at = ${scheduleRetry ? 'CASE WHEN strikes = 0 THEN ? ELSE ? END' : 'NULL'},
+       retry_at = ${
+         scheduleRetry
+           ? `CASE WHEN strikes = 0 THEN ? WHEN strikes < ${MAX_AUTO_RETRIES} THEN ? ELSE NULL END`
+           : 'NULL'
+       },
        strikes = ${status === 'failed' ? 'strikes + 1' : '0'}
      WHERE key = ?`,
     status,
@@ -853,6 +880,7 @@ async function drain(trigger: string, sess: Session): Promise<void> {
       if (!(await stillWanted(item.key))) continue; // removed mid-batch
       // Connectivity can change mid-run (leave the house, Wi-Fi drops).
       await ensureNetwork();
+      const attemptStarted = Date.now();
       try {
         // Claim the item before resolving its file: that can take seconds
         // (iCloud download), and removeQueued() must not delete a row the
@@ -894,6 +922,14 @@ async function drain(trigger: string, sess: Session): Promise<void> {
           if (permission && !permission.allowed) {
             logError('queue', `upload of ${item.filename} interrupted, pausing queue`, err);
             throw new Paused(permission.reason ?? 'Uploads paused');
+          }
+          // Cut off while the app was in the background (iOS suspends it, or
+          // a background-task window ended): leave the file queued with no
+          // strike, so it resumes on the next foreground or wakeup instead of
+          // burning its retries and backing off for hours.
+          if (wasBackgroundedSince(attemptStarted)) {
+            logError('queue', `upload of ${item.filename} cut off in the background, pausing`, err);
+            throw new Paused('Paused while the app was in the background');
           }
         }
         logError('queue', `failed ${item.filename}`, err);
