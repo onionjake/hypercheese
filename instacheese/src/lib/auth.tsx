@@ -50,6 +50,17 @@ function accountKey(baseUrl: string, username: string): string {
   return `${host}|${username.trim().toLowerCase()}`;
 }
 
+// The background upload task reads the session while the phone is usually
+// locked (iOS runs BGProcessingTasks overnight), and the default
+// whenUnlocked keychain class refuses that. An existing item keeps its old
+// class on update, so delete before writing.
+async function writeStoredSession(value: StoredSession): Promise<void> {
+  await SecureStore.deleteItemAsync(STORAGE_KEY).catch(() => {});
+  await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(value), {
+    keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+  });
+}
+
 // Also used outside React (the background upload task) to act on behalf of
 // the signed-in user without an AuthProvider.
 export async function loadStoredSession(): Promise<StoredSession | null> {
@@ -97,7 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (stale()) return;
         log('auth', `current user refreshed (can_write=${!!fresh.can_write})`);
         setUser(fresh);
-        await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify({ ...stored, user: fresh }));
+        await writeStoredSession({ ...stored, user: fresh });
       } catch (err) {
         logError('auth', 'could not refresh current user', err);
         if (!stale() && err instanceof api.ApiError && err.status === 401) {
@@ -171,10 +182,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // different account must not inherit this device's backup marks.
       await claimCatalog(accountKey(baseUrl, username));
       clearTagCache();
-      await SecureStore.setItemAsync(
-        STORAGE_KEY,
-        JSON.stringify({ ...newSession, user: newUser })
-      );
+      await writeStoredSession({ ...newSession, user: newUser });
       setSession(newSession);
       setUser(newUser);
       setStatus('signedIn');

@@ -2,7 +2,7 @@ import * as MediaLibrary from 'expo-media-library/legacy';
 import * as SQLite from 'expo-sqlite';
 
 import { flushLogs, log } from './log';
-import { SUPPORTED_EXTENSIONS, assetMtime, extensionOf } from './upload-protocol';
+import { MEDIA_PERMISSIONS, SUPPORTED_EXTENSIONS, assetMtime, extensionOf } from './upload-protocol';
 
 // Local catalog of the device's media library for partial sync: which assets
 // exist, which ones the user wants backed up, and what happened last time we
@@ -68,6 +68,10 @@ async function openDb(): Promise<SQLite.SQLiteDatabase> {
       const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(assets)');
       if (!cols.some((c) => c.name === 'excluded')) {
         await db.execAsync('ALTER TABLE assets ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0');
+      }
+      // When the last upload attempt failed, for auto-retry backoff.
+      if (!cols.some((c) => c.name === 'failed_at')) {
+        await db.execAsync('ALTER TABLE assets ADD COLUMN failed_at INTEGER');
       }
       return db;
     })();
@@ -136,17 +140,31 @@ let scanPromise: Promise<void> | null = null;
 // stamp, so a second caller joins the run already in flight instead of
 // starting its own. That caller forfeits progress callbacks; only the
 // foreground scan passes one, and it is the one that normally starts the run.
-export function refreshFromLibrary(onProgress?: (scanned: number) => void): Promise<void> {
+//
+// Only the foreground may prompt for permission (requestPermission, the
+// default): on Android a request from a backgrounded-but-alive process never
+// settles until the app is reopened, hanging the background task.
+export function refreshFromLibrary(
+  opts: { onProgress?: (scanned: number) => void; requestPermission?: boolean } = {}
+): Promise<void> {
   if (!scanPromise) {
-    scanPromise = runScan(onProgress).finally(() => {
+    scanPromise = runScan(opts.onProgress, opts.requestPermission ?? true).finally(() => {
       scanPromise = null;
     });
   }
   return scanPromise;
 }
 
-async function runScan(onProgress?: (scanned: number) => void): Promise<void> {
-  const permission = await MediaLibrary.requestPermissionsAsync();
+async function runScan(
+  onProgress: ((scanned: number) => void) | undefined,
+  requestPermission: boolean
+): Promise<void> {
+  // Check before requesting: with partial ("selected photos") access a
+  // request re-opens the system picker on every scan.
+  let permission = await MediaLibrary.getPermissionsAsync(false, MEDIA_PERMISSIONS);
+  if (!permission.granted && requestPermission && permission.canAskAgain) {
+    permission = await MediaLibrary.requestPermissionsAsync(false, MEDIA_PERMISSIONS);
+  }
   if (!permission.granted) {
     throw new Error('Photo library permission is required');
   }
@@ -399,13 +417,21 @@ export async function markStatus(
   mtime?: number
 ): Promise<void> {
   const db = await openDb();
+  const failedAt = status === 'failed' ? Date.now() : null;
   if (mtime === undefined) {
-    await db.runAsync('UPDATE assets SET status = ?, error = ? WHERE id = ?', status, error, id);
-  } else {
     await db.runAsync(
-      'UPDATE assets SET status = ?, error = ? WHERE id = ? AND mtime = ?',
+      'UPDATE assets SET status = ?, error = ?, failed_at = ? WHERE id = ?',
       status,
       error,
+      failedAt,
+      id
+    );
+  } else {
+    await db.runAsync(
+      'UPDATE assets SET status = ?, error = ?, failed_at = ? WHERE id = ? AND mtime = ?',
+      status,
+      error,
+      failedAt,
       id,
       mtime
     );
@@ -424,15 +450,21 @@ export async function setSize(id: string, size: number): Promise<void> {
 // assets still awaiting upload are returned; includeSynced also returns the
 // (much larger, ever-growing) already-synced set, so only re-verification
 // flows should ask for it.
+// failedRetryAfterMs (automatic retries) skips failures more recent than that.
 export async function markedForSync(
-  opts: { includeSynced?: boolean } = {}
+  opts: { includeSynced?: boolean; failedRetryAfterMs?: number } = {}
 ): Promise<LibraryAsset[]> {
   const db = await openDb();
   const statuses = opts.includeSynced ? "'pending', 'failed', 'synced'" : "'pending', 'failed'";
+  const recentFailure =
+    opts.failedRetryAfterMs === undefined
+      ? ''
+      : "AND NOT (status = 'failed' AND failed_at IS NOT NULL AND failed_at > ?)";
   const rows = await db.getAllAsync(
     `SELECT * FROM assets
-     WHERE supported = 1 AND excluded = 0 AND status IN (${statuses})
-     ORDER BY creation_time DESC, id DESC`
+     WHERE supported = 1 AND excluded = 0 AND status IN (${statuses}) ${recentFailure}
+     ORDER BY creation_time DESC, id DESC`,
+    ...(opts.failedRetryAfterMs === undefined ? [] : [Date.now() - opts.failedRetryAfterMs])
   );
   return rows.map(rowToAsset);
 }

@@ -10,6 +10,11 @@ import { log } from './log';
 // Shared pieces of the /files/* upload protocol, used by both the picker
 // upload flow (uploader.ts) and the camera-roll sync flow (sync.ts).
 
+// What every media-library permission check asks for. The default also
+// includes audio, which Android 13+ shows as a separate "music and audio"
+// prompt — declining it would report the whole permission as denied.
+export const MEDIA_PERMISSIONS: ('photo' | 'video')[] = ['photo', 'video'];
+
 // Extensions the server's importer accepts (lib/import.rb).
 export const SUPPORTED_EXTENSIONS = new Set([
   'jpg', 'jpeg', 'tiff', 'tif', 'png',

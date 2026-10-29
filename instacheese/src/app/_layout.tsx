@@ -40,6 +40,8 @@ function RootNavigator() {
       // Only writers can mark photos, so read-only accounts get neither the
       // reminder nor its notification-permission prompt.
       if (user?.can_write) registerMarkReminder();
+      // An account that lost write access keeps no stale reminder.
+      else if (user) cancelMarkReminder();
     } else if (status === 'signedOut') {
       unregisterBackgroundUploads();
       cancelMarkReminder();

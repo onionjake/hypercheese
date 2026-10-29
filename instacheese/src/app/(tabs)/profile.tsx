@@ -19,6 +19,7 @@ import { clearLogs, exportLogs, logError } from '@/lib/log';
 import { cancelMarkReminder, registerMarkReminder } from '@/lib/mark-reminder';
 import { getSettings, updateSettings } from '@/lib/settings';
 import { accent, usePalette } from '@/lib/theme';
+import * as queue from '@/lib/upload-queue';
 
 export default function ProfileScreen() {
   const { session, user, signOut } = useAuth();
@@ -37,6 +38,8 @@ export default function ProfileScreen() {
   const toggleCellular = async (value: boolean) => {
     setUploadOnCellular(value);
     await updateSettings({ uploadOnCellular: value });
+    // A queue paused on "Waiting for Wi-Fi" can go now.
+    if (value) queue.kick('cellular-enabled');
   };
 
   const toggleNightlyReminder = async (value: boolean) => {

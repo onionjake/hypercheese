@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { libraryCounts, refreshFromLibrary } from './library-db';
 import { log, logError } from './log';
 import { getSettings, updateSettings } from './settings';
+import { MEDIA_PERMISSIONS } from './upload-protocol';
 
 // Nightly nudge to triage the camera roll: a local notification around 9pm
 // saying how many photos still need a Back up / Won't upload decision. The
@@ -116,10 +117,10 @@ export async function refreshMarkReminderInBackground(): Promise<void> {
 
     const now = Date.now();
     if (now - settings.reminderLastScan > BACKGROUND_RESCAN_INTERVAL) {
-      const media = await MediaLibrary.getPermissionsAsync();
+      const media = await MediaLibrary.getPermissionsAsync(false, MEDIA_PERMISSIONS);
       if (media.granted) {
         try {
-          await refreshFromLibrary();
+          await refreshFromLibrary({ requestPermission: false });
           await updateSettings({ reminderLastScan: now });
           log('reminder', 'background library rescan complete');
         } catch (err) {
