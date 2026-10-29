@@ -407,12 +407,6 @@ export async function excludeSelected(): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
-// With `mtime`, only touches the row if the catalog still has that version:
-// an upload of the old version of a photo edited mid-upload must not mark
-// the new version backed up. `backoff: 'repeat'` is for a failure that may
-// be a blip (a dropped transfer): automatic retries try again right away the
-// first time, and only back off if the previous attempt had failed too — so
-// a file that can never get through isn't re-sent on every retry.
 // Assets the user marked "won't upload" — every upload flow honours that.
 export async function excludedAssetIds(): Promise<Set<string>> {
   const db = await openDb();
@@ -420,6 +414,12 @@ export async function excludedAssetIds(): Promise<Set<string>> {
   return new Set(rows.map((r) => r.id));
 }
 
+// With `mtime`, only touches the row if the catalog still has that version:
+// an upload of the old version of a photo edited mid-upload must not mark
+// the new version backed up. `backoff: 'repeat'` is for a failure that may
+// be a blip (a dropped transfer): automatic retries try again right away the
+// first time, and only back off if the previous attempt had failed too — so
+// a file that can never get through isn't re-sent on every retry.
 export async function markStatus(
   id: string,
   status: AssetStatus,
