@@ -2,13 +2,41 @@ import * as Crypto from 'expo-crypto';
 import { File, FileMode } from 'expo-file-system';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 import { sha256 } from 'js-sha256';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { CLIENT_VERSION, type Session } from './api';
 import { log } from './log';
 
 // Shared pieces of the /files/* upload protocol, used by both the picker
 // upload flow (uploader.ts) and the camera-roll sync flow (sync.ts).
+
+// Give the event loop back between chunks of heavy work so the UI stays
+// responsive. Only in the foreground: in an Android background run JS timers
+// may never fire (expo-task-manager's headless keep-alive task ends at once),
+// so awaiting one there hung the task — mid-hash, mid-enqueue holding the
+// write chain, mid-scan — for the whole WorkManager window. If the app
+// leaves the foreground while waiting, stop waiting.
+export function yieldToUI(): Promise<void> {
+  if (AppState.currentState !== 'active') return Promise.resolve();
+  return new Promise((resolve) => {
+    let sub: { remove(): void } | null = null;
+    const done = () => {
+      sub?.remove();
+      resolve();
+    };
+    const timer = setTimeout(done, 0);
+    try {
+      sub = AppState.addEventListener('change', (state) => {
+        if (state !== 'active') {
+          clearTimeout(timer);
+          done();
+        }
+      });
+    } catch {
+      // no AppState events here; the timer alone will do
+    }
+  });
+}
 
 // What every media-library permission check asks for. The default also
 // includes audio, which Android 13+ shows as a separate "music and audio"
@@ -203,7 +231,7 @@ export async function sha256OfFile(uri: string, size?: number): Promise<string> 
         hash.update(chunk);
         read += chunk.length;
         // readBytes is synchronous; let the event loop breathe between chunks.
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await yieldToUI();
       }
     } finally {
       handle.close();
