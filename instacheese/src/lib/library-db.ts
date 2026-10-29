@@ -604,12 +604,16 @@ export async function releaseCatalog(): Promise<void> {
 // predecessor's marks are dropped so auto-retry can't upload them into the
 // new account. "Won't upload" survives — it only ever prevents uploads. A
 // catalog from before this existed is adopted by whoever signs in next.
-export async function claimCatalog(account: string): Promise<void> {
+//
+// `aliases` are other keys the same account may have been recorded under
+// (e.g. by an older build); a match on any of them keeps the marks, and the
+// catalog is re-recorded under `account`.
+export async function claimCatalog(account: string, aliases: string[] = []): Promise<void> {
   const db = await openDb();
   const row = await db.getFirstAsync<{ value: string }>(
     "SELECT value FROM meta WHERE key = 'account'"
   );
-  if (row && row.value !== account) {
+  if (row && row.value !== account && !aliases.includes(row.value)) {
     const reset = await db.runAsync(
       "UPDATE assets SET status = 'none', error = NULL, selected = 0 WHERE status != 'none' OR selected = 1"
     );

@@ -60,9 +60,25 @@ async function recoverUploadToken(baseUrl: string): Promise<string | null> {
 
 // Identifies whose backup marks the library catalog holds. Scheme and a
 // leading www. are dropped so the same server typed two ways still matches.
-function accountKey(baseUrl: string, username: string): string {
+function accountKey(baseUrl: string, login: string): string {
   const host = baseUrl.replace(/^https?:\/\//i, '').replace(/^www\./i, '').toLowerCase();
-  return `${host}|${username.trim().toLowerCase()}`;
+  return `${host}|${login.trim().toLowerCase()}`;
+}
+
+// The server's user id, from the upload token's payload ({ user_id, device };
+// /api/users/current doesn't return one). Identifies the account however
+// the login was typed — username one time, email the next.
+function tokenUserId(token: string | null): string | null {
+  try {
+    const part = token?.split('.')[1];
+    if (!part) return null;
+    const base64 = part.replace(/-/g, '+').replace(/_/g, '/');
+    const json = globalThis.atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='));
+    const id = JSON.parse(json)?.user_id;
+    return id == null ? null : String(id);
+  } catch {
+    return null;
+  }
 }
 
 // The background upload task reads the session while the phone is usually
@@ -192,6 +208,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+    // Devise skips the password check when the jar still holds a session;
+    // an email that /files/auth already refused must not ride on a leftover
+    // cookie from someone else.
+    if (!token && username.includes('@') && !cookieTrusted) {
+      throw new Error("Couldn't sign in with an email right now — try your username");
+    }
+
     // Fallback for servers without the API token support: Devise session.
     await api.sessionLogin(baseUrl, username, password);
     const sessionSession: Session = { baseUrl, mode: 'session', token };
@@ -225,7 +248,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // queue rows a sign-out killed midway left behind. Signing in always
       // starts from signed out, where the queue should already be empty.
       await clearUploadQueue();
-      await claimCatalog(accountKey(baseUrl, username));
+      // Keyed on the server's user id when the token carries one; the typed
+      // login (what older builds recorded) still counts as the same owner.
+      const typedKey = accountKey(baseUrl, username);
+      const userId = tokenUserId(newSession.token);
+      await claimCatalog(userId ? accountKey(baseUrl, `#${userId}`) : typedKey, [typedKey]);
       clearTagCache();
       await writeStoredSession({ ...newSession, user: newUser, cookieTrusted: trusted });
       setSession(newSession);
