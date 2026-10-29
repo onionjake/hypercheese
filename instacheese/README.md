@@ -106,4 +106,5 @@ iOS remains manual for now: `npx eas build --platform ios` → TestFlight.
   "Most Compatible" to shoot JPEG.
 - iOS slow-motion videos are backed up from their original high-frame-rate
   file (the photo library's slow-motion version is only ever a fresh
-  re-encode).
+  re-encode). One stored only in iCloud ("Optimize iPhone Storage") can't be
+  read that way and shows as failed.

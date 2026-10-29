@@ -4,7 +4,7 @@ import type { ImagePickerAsset } from 'expo-image-picker';
 // always throws in this SDK, which silently fell back to the pick time.
 import * as MediaLibrary from 'expo-media-library/legacy';
 
-import { assetInfo } from './library-db';
+import { assetDates } from './library-db';
 import { log } from './log';
 import {
   MEDIA_PERMISSIONS,
@@ -61,9 +61,8 @@ async function originalMtimes(assets: ImagePickerAsset[]): Promise<(number | nul
     assets.map(async (asset) => {
       if (!asset.assetId) return null;
       try {
-        // Only the dates are needed: don't pull the original (or a Live
-        // Photo's video) down from iCloud again just to read them.
-        const info = await assetInfo(asset.assetId, { shouldDownloadFromNetwork: false });
+        // Only the dates are needed (no download, copy or re-encode).
+        const info = await assetDates(asset.assetId);
         // Same fallback logic as the sync flows (assetMtime) so every flow
         // sends the identical mtime for the same asset.
         return assetMtime(info) || null;

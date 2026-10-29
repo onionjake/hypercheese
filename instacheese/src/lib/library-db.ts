@@ -158,6 +158,29 @@ export async function slowMotionOriginal(assetId: string): Promise<SlowMotionLoo
   }
 }
 
+// An asset's dates without touching its file. On iOS the newer API reads
+// them from PhotoKit metadata (same rounding as the legacy API, so the same
+// mtime every flow sends); the legacy lookup would write a Live Photo's
+// video copy or re-encode a whole slow-motion clip just to answer.
+export async function assetDates(
+  assetId: string
+): Promise<{ modificationTime: number | null; creationTime: number | null }> {
+  if (Platform.OS === 'ios') {
+    try {
+      const asset = new PhotoKitAsset(assetId.startsWith('ph://') ? assetId : `ph://${assetId}`);
+      const [modificationTime, creationTime] = await Promise.all([
+        asset.getModificationTime(),
+        asset.getCreationTime(),
+      ]);
+      return { modificationTime, creationTime };
+    } catch {
+      // fall back to the legacy lookup
+    }
+  }
+  const info = await assetInfo(assetId, { shouldDownloadFromNetwork: false });
+  return { modificationTime: info.modificationTime, creationTime: info.creationTime };
+}
+
 // Through the File API: the legacy deleteAsync refuses anything outside
 // Caches/Documents (it checks `<file>/..` for write access), and the paired
 // videos live in tmp/.
