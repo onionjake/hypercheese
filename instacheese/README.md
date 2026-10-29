@@ -100,9 +100,10 @@ iOS remains manual for now: `npx eas build --platform ios` → TestFlight.
 - Sign-in uses your HyperCheese **username** (not email).
 - Accounts without write permission get a read-only feed (no likes,
   comments, or uploads) until an admin bumps their role.
-- iOS photos are requested in JPEG/H.264 ("compatible") form so the server's
-  importer accepts them; HEIC-only originals are transcoded by iOS at pick
-  time.
+- Picked iOS media is uploaded as the original bytes (no on-device
+  transcoding), which keeps dedupe stable across picks. HEIC photos show as
+  not supported until the server's importer accepts them; set the camera to
+  "Most Compatible" to shoot JPEG.
 - iOS slow-motion videos can't be backed up or synced from the camera roll
   yet: the photo library only hands them out as a fresh re-encode each
   time, never the original. They show as "not supported" on the Backup
