@@ -478,7 +478,8 @@ export async function retryFailed(): Promise<void> {
   const db = await openDb();
   const failed = await db.getAllAsync('SELECT * FROM uploads WHERE status = ?', 'failed');
   await db.runAsync(
-    `UPDATE uploads SET status = 'queued', error = NULL, updated_at = ? WHERE status = 'failed'`,
+    `UPDATE uploads SET status = 'queued', error = NULL, retry_at = NULL, strikes = 0, updated_at = ?
+     WHERE status = 'failed'`,
     Date.now()
   );
   for (const row of failed) {
@@ -920,6 +921,10 @@ export function kick(trigger: string): Promise<void> {
       await refreshAndBroadcast();
       if (pendingKick) {
         pendingKick = false;
+        // The retry that set pendingKick skipped this step while the drain
+        // ran; a transfer cut off at the end of it is due right away.
+        await requeueDueRetries().catch(() => {});
+        await refreshCounts().catch(() => {});
         if (counts.remaining > 0 && session) kick(`${trigger}+pending`);
       }
     });
