@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -14,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CompatNotice } from '@/components/compat-notice';
 import { useAuth } from '@/lib/auth';
+import { logError } from '@/lib/log';
 import { accent, usePalette } from '@/lib/theme';
 import { enqueuePicked, prepareFiles, type UploadFile, type UploadStatus } from '@/lib/uploader';
 import * as queue from '@/lib/upload-queue';
@@ -54,18 +56,31 @@ export default function UploadScreen() {
   );
 
   const pick = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
-      allowsMultipleSelection: true,
-      selectionLimit: 50,
-      quality: 1,
-      // Hand over the ORIGINAL bytes — no on-device transcoding. The server
-      // transcodes video itself (ffmpeg), and stable original bytes keep the
-      // sha256 dedup working across picks. HEIC photos will show as
-      // unsupported until the server importer accepts them.
-      preferredAssetRepresentationMode:
-        ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
-    });
+    let result: ImagePicker.ImagePickerResult;
+    try {
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images', 'videos'],
+        allowsMultipleSelection: true,
+        selectionLimit: 50,
+        quality: 1,
+        // Hand over the ORIGINAL bytes — no on-device transcoding. The server
+        // transcodes video itself (ffmpeg), and stable original bytes keep the
+        // sha256 dedup working across picks. HEIC photos will show as
+        // unsupported until the server importer accepts them.
+        preferredAssetRepresentationMode:
+          ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
+        // iOS: an iCloud-only original (Optimize iPhone Storage) is fetched;
+        // without this one such video rejects the whole selection.
+        shouldDownloadFromNetwork: true,
+      });
+    } catch (err) {
+      logError('picker', 'picking failed', err);
+      Alert.alert(
+        "Couldn't add those photos",
+        err instanceof Error ? err.message : 'Something went wrong while picking.'
+      );
+      return;
+    }
     if (result.canceled) return;
     // Append to what's already listed (anything mid-upload keeps going), so
     // the user can pick more while earlier picks are still in the queue.

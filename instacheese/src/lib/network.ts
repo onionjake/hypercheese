@@ -60,6 +60,23 @@ export async function uploadAllowedRecently(maxAgeMs = 5000): Promise<UploadPerm
 }
 
 // Fires when connectivity changes in a way that might newly allow uploads.
+//
+// Only on an actual change: NetInfo notifies every subscriber on every
+// refresh() — which uploadAllowed() itself calls before each batch and file —
+// so passing every event through made a paused queue re-kick itself every
+// few seconds forever.
 export function onNetworkChange(fn: () => void): () => void {
-  return NetInfo.addEventListener(() => fn());
+  let last: string | null = null;
+  return NetInfo.addEventListener((state) => {
+    const key = `${state.isConnected}|${state.type}|${
+      state.details && 'isConnectionExpensive' in state.details
+        ? state.details.isConnectionExpensive
+        : ''
+    }`;
+    if (key === last) return;
+    const first = last === null;
+    last = key;
+    // The first event is just the current state on subscribe, not a change.
+    if (!first) fn();
+  });
 }

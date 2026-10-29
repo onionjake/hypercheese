@@ -17,6 +17,7 @@ import { onNetworkChange, uploadAllowed, uploadAllowedRecently } from './network
 import {
   NetworkError,
   ServerError,
+  StaleFileError,
   UploadInterrupted,
   flushShaCache,
   hashAndUpload,
@@ -778,14 +779,65 @@ async function resetInFlight(): Promise<void> {
 async function pruneExpired(): Promise<void> {
   const db = await openDb();
   const now = Date.now();
-  await db.runAsync(
-    `DELETE FROM uploads WHERE status IN ('done', 'exists') AND updated_at < ?`,
-    now - FINISHED_TTL_MS
-  );
-  await db.runAsync(
-    `DELETE FROM uploads WHERE status = 'failed' AND retry_at IS NULL AND updated_at < ?`,
+  const finished = `status IN ('done', 'exists') AND updated_at < ?`;
+  const failed = `status = 'failed' AND retry_at IS NULL AND updated_at < ?`;
+  const expired = await db.getAllAsync<{ local_uri: string | null }>(
+    `SELECT local_uri FROM uploads WHERE source = 'picker' AND ((${finished}) OR (${failed}))`,
+    now - FINISHED_TTL_MS,
     now - FAILED_TTL_MS
   );
+  await db.runAsync(`DELETE FROM uploads WHERE ${finished}`, now - FINISHED_TTL_MS);
+  await db.runAsync(`DELETE FROM uploads WHERE ${failed}`, now - FAILED_TTL_MS);
+  // The picker hands over a full copy of every pick (Caches/ImagePicker)
+  // and nothing else ever deletes it; drop it with its row. Kept until then
+  // so the share screen's thumbnails don't vanish the moment a file is done.
+  for (const row of expired) await deletePickerCopy(row.local_uri);
+  await sweepPickerCopies();
+}
+
+function isPickerCopy(uri: string | null): uri is string {
+  const cache = LegacyFileSystem.cacheDirectory;
+  return !!uri && !!cache && uri.startsWith(`${cache}ImagePicker/`);
+}
+
+async function deletePickerCopy(uri: string | null): Promise<void> {
+  if (!isPickerCopy(uri)) return;
+  await LegacyFileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+}
+
+// Once per run: picks that never reached the queue (picked, not shared) or
+// whose rows went away some other way (Clear done/failed, sign-out). Spares
+// anything a row still references and anything from the last day, which
+// the share screen may still be showing.
+let pickerSweepDone = false;
+async function sweepPickerCopies(): Promise<void> {
+  if (pickerSweepDone || !LegacyFileSystem.cacheDirectory) return;
+  pickerSweepDone = true;
+  const dir = `${LegacyFileSystem.cacheDirectory}ImagePicker/`;
+  try {
+    const names = await LegacyFileSystem.readDirectoryAsync(dir);
+    const db = await openDb();
+    const referenced = new Set(
+      (await db.getAllAsync<{ local_uri: string }>(
+        `SELECT local_uri FROM uploads WHERE local_uri IS NOT NULL`
+      )).map((r) => r.local_uri)
+    );
+    let removed = 0;
+    for (const name of names) {
+      const uri = dir + name;
+      if (referenced.has(uri)) continue;
+      const info = await LegacyFileSystem.getInfoAsync(uri);
+      // modificationTime is in seconds.
+      if (!info.exists || info.isDirectory || Date.now() - info.modificationTime * 1000 < FINISHED_TTL_MS) {
+        continue;
+      }
+      await LegacyFileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+      removed++;
+    }
+    if (removed) log('queue', `removed ${removed} old picker copies`);
+  } catch {
+    // no picker directory yet
+  }
 }
 
 // Put failed picker/sync rows whose scheduled retry is due back in the queue.
@@ -984,13 +1036,20 @@ async function drain(trigger: string, sess: Session): Promise<void> {
             }
           }
         }
+        if (err instanceof StaleFileError) {
+          // Forget the recorded size so the retry re-reads the file as it is
+          // now (the cached hash was already dropped).
+          await db.runAsync('UPDATE uploads SET size = NULL WHERE key = ?', item.key);
+          if (item.assetId) await setSize(item.assetId, null);
+          resolvedThisRun.delete(item.key);
+        }
         logError('queue', `failed ${item.filename}`, err);
         // A cut-off transfer while still online, or a server 5xx, may be a
         // blip (or a restart) as easily as this file: fail it so the queue
         // moves on, and let the next auto-retry try it once more before
         // backing off.
         await settle(item, 'failed', String(err), {
-          retrySoon: interrupted || err instanceof ServerError,
+          retrySoon: interrupted || err instanceof ServerError || err instanceof StaleFileError,
         });
       }
     }
