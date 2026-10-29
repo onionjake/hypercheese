@@ -23,6 +23,7 @@ import {
   hashAndUpload,
   manifestCheck,
   stablePath,
+  yieldToUI,
 } from './upload-protocol';
 
 // The consolidated upload queue shared by all three upload flows (picker
@@ -422,7 +423,7 @@ export function enqueue(
     let emitted = 0;
     const emitYielding = async (item: QueueItem) => {
       emitItem(item);
-      if (++emitted % 200 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+      if (++emitted % 200 === 0) await yieldToUI();
     };
     for (const item of toQueue) {
       await emitYielding({

@@ -4,7 +4,7 @@ import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
 import { flushLogs, log, logError } from './log';
-import { MEDIA_PERMISSIONS, assetMtime, isBackupSupported } from './upload-protocol';
+import { MEDIA_PERMISSIONS, assetMtime, isBackupSupported, yieldToUI } from './upload-protocol';
 
 // Local catalog of the device's media library for partial sync: which assets
 // exist, which ones the user wants backed up, and what happened last time we
@@ -314,7 +314,7 @@ async function runScan(
     onProgress?.(scanned);
     // Hand the event loop back between pages so a long scan can't hold off
     // rendering, the watchdog tick, or the upload queue's callbacks.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await yieldToUI();
   }
 
   // With limited ("selected photos") access the library only shows a
