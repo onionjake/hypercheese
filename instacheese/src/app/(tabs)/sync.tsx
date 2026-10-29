@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { CompatNotice } from '@/components/compat-notice';
 import { useAuth } from '@/lib/auth';
 import { startSync, type SyncHandle, type SyncStatus } from '@/lib/sync';
 import { accent, usePalette } from '@/lib/theme';
@@ -40,6 +41,7 @@ export default function SyncScreen() {
       <View style={[styles.titleBar, { borderColor: palette.border }]}>
         <Text style={[styles.title, { color: palette.text }]}>Sync library</Text>
       </View>
+      {canWrite ? <CompatNotice /> : null}
 
       {!canWrite ? (
         <View style={styles.center}>

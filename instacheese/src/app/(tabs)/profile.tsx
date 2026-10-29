@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { CompatNotice } from '@/components/compat-notice';
 import { useAuth } from '@/lib/auth';
 import { clearLogs, exportLogs, logError } from '@/lib/log';
 import { cancelMarkReminder, registerMarkReminder } from '@/lib/mark-reminder';
@@ -153,6 +154,7 @@ export default function ProfileScreen() {
             Read-only account — ask your admin for upload access.
           </Text>
         ) : null}
+        {user?.can_write ? <CompatNotice /> : null}
 
         <View style={[styles.settingRow, { borderColor: palette.border }]}>
           <View style={{ flex: 1 }}>

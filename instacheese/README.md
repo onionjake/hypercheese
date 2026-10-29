@@ -36,11 +36,13 @@ automatically).
 
 **Compatibility mode:** against an older server, sign-in gracefully falls
 back to a browser-style Devise session (cookie + CSRF token, exactly like
-the web app). Browsing, bullhorns, stars, and comments all work; only
-uploading is disabled, because an un-upgraded server would store the bytes
-but never import them into the gallery. The profile and upload screens say
-so when this mode is active — sign out and back in after upgrading the
-server to switch to token mode.
+the web app). Browsing, bullhorns, stars, and comments all work. Uploading
+stays enabled, but an un-upgraded server only imports app uploads into the
+gallery when a `Source` is linked to the device — otherwise it stores the
+bytes without showing them, while the app reports them uploaded. The
+profile, share, backup, and sync screens warn about this while the mode is
+active (keep the originals on the phone); sign out and back in after
+upgrading the server to switch to token mode.
 
 ## Development
 

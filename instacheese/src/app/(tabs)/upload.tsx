@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { CompatNotice } from '@/components/compat-notice';
 import { useAuth } from '@/lib/auth';
 import { accent, usePalette } from '@/lib/theme';
 import { enqueuePicked, prepareFiles, type UploadFile, type UploadStatus } from '@/lib/uploader';
@@ -99,6 +100,7 @@ export default function UploadScreen() {
       <View style={[styles.titleBar, { borderColor: palette.border }]}>
         <Text style={[styles.title, { color: palette.text }]}>Share photos</Text>
       </View>
+      {canWrite ? <CompatNotice /> : null}
 
       {!canWrite ? (
         <View style={styles.center}>
