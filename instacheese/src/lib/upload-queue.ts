@@ -1,10 +1,9 @@
 import * as LegacyFileSystem from 'expo-file-system/legacy';
-import * as MediaLibrary from 'expo-media-library/legacy';
 import * as SQLite from 'expo-sqlite';
 import { AppState } from 'react-native';
 
 import { type Session } from './api';
-import { libraryCounts, markStatus, markedForSync, setSize } from './library-db';
+import { assetInfo, libraryCounts, markStatus, markedForSync, setSize } from './library-db';
 import { flushLogs, log, logError } from './log';
 import { onNetworkChange, uploadAllowed } from './network';
 import {
@@ -526,7 +525,7 @@ export async function libraryLocalUri(
   fallbackUri: string | null
 ): Promise<string> {
   try {
-    const info = await MediaLibrary.getAssetInfoAsync(assetId);
+    const info = await assetInfo(assetId);
     if (info.localUri) return info.localUri;
     throw new Error('Original not available on this device');
   } catch (err) {

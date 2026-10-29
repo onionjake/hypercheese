@@ -4,6 +4,7 @@ import type { ImagePickerAsset } from 'expo-image-picker';
 // always throws in this SDK, which silently fell back to the pick time.
 import * as MediaLibrary from 'expo-media-library/legacy';
 
+import { assetInfo } from './library-db';
 import { log } from './log';
 import {
   MEDIA_PERMISSIONS,
@@ -60,7 +61,7 @@ async function originalMtimes(assets: ImagePickerAsset[]): Promise<(number | nul
     assets.map(async (asset) => {
       if (!asset.assetId) return null;
       try {
-        const info = await MediaLibrary.getAssetInfoAsync(asset.assetId);
+        const info = await assetInfo(asset.assetId);
         // Same fallback logic as the sync flows (assetMtime) so every flow
         // sends the identical mtime for the same asset.
         return assetMtime(info) || null;
