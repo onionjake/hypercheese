@@ -298,10 +298,29 @@ export async function fetchItemDetails(session: Session, id: number): Promise<It
   return json.item;
 }
 
+// Star/bullhorn changes, for other screens showing the same item. The server
+// toggles rather than sets, so a copy left stale (the feed under the detail
+// view) would turn its next tap into the opposite of what it shows.
+export type ItemPatch = Partial<Pick<FeedItem, 'starred' | 'bullhorned'>>;
+const itemListeners = new Set<(id: number, patch: ItemPatch) => void>();
+
+export function onItemChanged(listener: (id: number, patch: ItemPatch) => void): () => void {
+  itemListeners.add(listener);
+  return () => {
+    itemListeners.delete(listener);
+  };
+}
+
+function itemChanged(id: number, patch: ItemPatch) {
+  for (const listener of itemListeners) listener(id, patch);
+}
+
 export async function toggleStar(session: Session, id: number): Promise<FeedItem> {
   const json = await request<{ item: FeedItem }>(session, `/api/items/${id}/toggle_star`, {
     method: 'POST',
   });
+  // Only the toggled field: another toggle of this item may still be in flight.
+  itemChanged(id, { starred: json.item.starred });
   return json.item;
 }
 
@@ -309,6 +328,7 @@ export async function toggleBullhorn(session: Session, id: number): Promise<Feed
   const json = await request<{ item: FeedItem }>(session, `/api/items/${id}/toggle_bullhorn`, {
     method: 'POST',
   });
+  itemChanged(id, { bullhorned: json.item.bullhorned });
   return json.item;
 }
 

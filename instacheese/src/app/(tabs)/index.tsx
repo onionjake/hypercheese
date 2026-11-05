@@ -40,8 +40,9 @@ export default function FeedScreen() {
   const [error, setError] = useState<string | null>(null);
   const loadingRef = useRef(false);
   const modeRef = useRef(mode);
-  // Bumped on every mode switch: a response (or finally block) from an older
-  // generation must neither touch state nor hold the loading lock.
+  // Bumped on every mode switch and pull-to-refresh: a response (or finally
+  // block) from an older generation must neither touch state nor hold the
+  // loading lock.
   const generationRef = useRef(0);
   // Toggle requests in flight, by `${id}:${field}` — each POST flips server
   // state, so a second tap before the first answers would race it.
@@ -113,7 +114,21 @@ export default function FeedScreen() {
     // The reset above retriggers the initial-load effect.
   };
 
+  // A star/bullhorn toggled in the detail view (stacked above this screen).
+  useEffect(
+    () =>
+      api.onItemChanged((id, patch) =>
+        setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)))
+      ),
+    []
+  );
+
   const onRefresh = () => {
+    // A load-more still in flight would hold the lock and swallow the
+    // refresh; abandon it the way a mode switch does.
+    generationRef.current++;
+    loadingRef.current = false;
+    setLoadingMore(false);
     setRefreshing(true);
     loadPage({ refresh: true });
   };

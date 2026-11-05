@@ -241,6 +241,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!sessionSession.token && cookieTrusted) {
       sessionSession.token = await recoverUploadToken(baseUrl);
     }
+    // No token was tried on /api above (an email login, or a failed token
+    // request): an upgraded server accepts this one, and settling for
+    // compatibility mode would warn about uploads it handles fine.
+    if (!token && sessionSession.token) {
+      const upgraded: Session = { baseUrl, mode: 'token', token: sessionSession.token };
+      const upgradedUser = await api.fetchCurrentUser(upgraded).catch(() => null);
+      if (upgradedUser) {
+        await persist(upgraded, upgradedUser);
+        return;
+      }
+    }
     await persist(sessionSession, freshUser, cookieTrusted);
 
     async function persist(newSession: Session, newUser: CurrentUser | null, trusted = false) {
@@ -263,10 +274,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    authEpoch.current++;
+    const epoch = ++authEpoch.current;
     // In token mode too: a stray browser cookie would otherwise outlive the
     // sign-out (see signIn).
     if (session) await api.sessionLogout(session);
+    // A repeated tap's sign-out took over while this one waited (up to 10s)
+    // on the server; let that one finish, so this one can't wipe an account
+    // signed in after it.
+    if (authEpoch.current !== epoch) return;
     // Stored session before the queue clear: a background wakeup in between
     // would otherwise read it after the clear and re-queue this account's
     // marks for whoever signs in next.
