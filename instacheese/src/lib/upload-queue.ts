@@ -500,9 +500,17 @@ export async function removeQueued(
   const sources = source === undefined ? [] : Array.isArray(source) ? source : [source];
   if (keys.length === 0) return;
   const db = await openDb();
-  const remove = keys.filter((k) => k !== current?.key);
-  if (remove.length === 0) return;
-  for (const batch of chunk(remove, 400)) {
+  for (const keyBatch of chunk(keys, 400)) {
+    // Re-read per chunk, right before its DELETE goes out (no await in
+    // between): the drain can claim a new file while an earlier chunk runs.
+    // Only a file past its claim (hashing/uploading) is spared. One still in
+    // the size check can take seconds per file (iCloud download) and isn't
+    // committed to anything yet — sparing it there let a photo just marked
+    // "won't upload" go on to be uploaded; the drain re-checks the row
+    // before uploading, so deleting it is enough.
+    const spared = current && current.phase !== 'checking' ? current.key : null;
+    const batch = keyBatch.filter((k) => k !== spared);
+    if (batch.length === 0) continue;
     const placeholders = batch.map(() => '?').join(',');
     await db.runAsync(
       `DELETE FROM uploads

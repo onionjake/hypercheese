@@ -196,6 +196,9 @@ export default function ItemScreen() {
     try {
       const comment = await api.postComment(session, id, text);
       setCommentText('');
+      // An earlier failed attempt's message would otherwise sit under the
+      // comment that just went through.
+      setError(null);
       if (details) {
         setDetails((prev) =>
           prev ? { ...prev, comments: [...prev.comments, comment] } : prev

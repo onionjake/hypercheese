@@ -16,7 +16,7 @@ import { FeedCard } from '@/components/feed-card';
 import * as api from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { log, logError } from '@/lib/log';
-import { tagLine, useTagMap } from '@/lib/tags';
+import { retryTags, tagLine, useTagMap } from '@/lib/tags';
 import { accent, usePalette } from '@/lib/theme';
 import type { FeedItem } from '@/lib/types';
 
@@ -131,6 +131,8 @@ export default function FeedScreen() {
     setLoadingMore(false);
     setRefreshing(true);
     loadPage({ refresh: true });
+    // A tag load that failed at startup isn't retried on its own.
+    if (session) retryTags(session);
   };
 
   const onEndReached = () => {
@@ -222,7 +224,13 @@ export default function FeedScreen() {
                 <Text style={{ color: palette.subtleText, textAlign: 'center', padding: 24 }}>
                   {error}
                 </Text>
-                <Pressable onPress={() => loadPage({ refresh: true })} hitSlop={8}>
+                <Pressable
+                  onPress={() => {
+                    loadPage({ refresh: true });
+                    retryTags(session);
+                  }}
+                  hitSlop={8}
+                >
                   <Text style={{ color: accent, fontWeight: '600' }}>Try again</Text>
                 </Pressable>
               </View>

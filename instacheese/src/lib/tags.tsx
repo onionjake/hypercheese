@@ -9,6 +9,9 @@ let inflight: Promise<Map<number, Tag>> | null = null;
 // Bumped by clearTagCache: a fetch started for the previous account (tag
 // aliases are per user) must not become the next account's cache.
 let generation = 0;
+// Every mounted useTagMap: a load that one screen retried (after a failure
+// at startup, say) fills in the others too.
+const listeners = new Set<(map: Map<number, Tag>) => void>();
 
 async function load(session: Session): Promise<Map<number, Tag>> {
   if (cache) return cache;
@@ -16,7 +19,10 @@ async function load(session: Session): Promise<Map<number, Tag>> {
     const gen = generation;
     inflight = api.fetchTags(session).then((tags) => {
       const map = new Map(tags.map((t) => [t.id, t]));
-      if (gen === generation) cache = map;
+      if (gen === generation) {
+        cache = map;
+        for (const listener of listeners) listener(map);
+      }
       return map;
     });
   }
@@ -26,6 +32,12 @@ async function load(session: Session): Promise<Map<number, Tag>> {
   } finally {
     if (inflight === request) inflight = null;
   }
+}
+
+// Another try after a failed load (a no-op once the tags are cached), e.g.
+// on pull-to-refresh — otherwise tag lines stay missing for the whole session.
+export function retryTags(session: Session): void {
+  load(session).catch(() => {});
 }
 
 export function clearTagCache() {
@@ -42,13 +54,16 @@ export function useTagMap(session: Session | null): Map<number, Tag> | null {
     // after this component's first render read it.
     if (!session) return;
     let cancelled = false;
+    const listener = (map: Map<number, Tag>) => {
+      if (!cancelled) setTags(map);
+    };
+    listeners.add(listener);
     load(session)
-      .then((map) => {
-        if (!cancelled) setTags(map);
-      })
+      .then(listener)
       .catch(() => {});
     return () => {
       cancelled = true;
+      listeners.delete(listener);
     };
   }, [session]);
 
