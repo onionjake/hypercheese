@@ -44,18 +44,37 @@ async function ensureChannel(): Promise<void> {
   });
 }
 
-export async function cancelMarkReminder(): Promise<void> {
-  try {
-    await Notifications.cancelScheduledNotificationAsync(REMINDER_ID);
-  } catch (err) {
-    logError('reminder', 'could not cancel reminder', err);
-  }
+// Schedule changes run one at a time, in call order. Each refresh is a
+// cancel-then-schedule over several native awaits; overlapping, a refresh
+// that read the setting (or a non-zero count) before a sign-out, a toggle-off
+// or the last photo being marked could schedule AFTER the cancel that
+// followed it — a reminder left firing nightly after sign-out, with the
+// setting off, or with a count when nothing needs marking.
+let scheduleChain: Promise<void> = Promise.resolve();
+function serialized(fn: () => Promise<void>): Promise<void> {
+  const run = scheduleChain.then(fn, fn);
+  scheduleChain = run.catch(() => {});
+  return run;
+}
+
+export function cancelMarkReminder(): Promise<void> {
+  return serialized(async () => {
+    try {
+      await Notifications.cancelScheduledNotificationAsync(REMINDER_ID);
+    } catch (err) {
+      logError('reminder', 'could not cancel reminder', err);
+    }
+  });
 }
 
 // Re-derive the schedule from current state: a daily 9pm notification with
 // the current unmarked count, or nothing when the pool is empty. Pass the
 // count if the caller just computed it; otherwise it's read from the catalog.
-export async function refreshMarkReminder(unmarked?: number): Promise<void> {
+export function refreshMarkReminder(unmarked?: number): Promise<void> {
+  return serialized(() => scheduleMarkReminder(unmarked));
+}
+
+async function scheduleMarkReminder(unmarked?: number): Promise<void> {
   try {
     if (!(await getSettings()).nightlyMarkReminder) return;
     const permission = await Notifications.getPermissionsAsync();

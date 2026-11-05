@@ -619,7 +619,12 @@ export async function markStatus(
   await db.runAsync(
     `UPDATE assets SET status = ?, error = ?, failed_at = ${failedAt},
        failures = ${status === 'failed' ? 'failures + 1' : '0'}
-     WHERE id = ?${mtime === undefined ? '' : ' AND mtime = ?'}`,
+     WHERE id = ?${mtime === undefined ? '' : ' AND mtime = ?'}${
+       // An upload already in flight when the photo was marked "won't
+       // upload" can still fail; that mustn't put the row back in Failed
+       // (where Retry would flip it to a 'pending' nothing ever uploads).
+       status === 'failed' ? ' AND excluded = 0' : ''
+     }`,
     status,
     error,
     now,

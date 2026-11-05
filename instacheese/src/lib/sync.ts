@@ -224,6 +224,11 @@ export function startSync(session: Session, onStatus: (status: SyncStatus) => vo
     );
   };
 
+  // Report 'running' before the first await (network and permission checks
+  // can take a while): until then the screen still shows Start/Scan again,
+  // and a second tap would start a parallel scan whose handle replaces this
+  // one's, leaving this run impossible to stop.
+  emit();
   run().catch((err) => {
     status.phase = 'error';
     status.lastError = String(err);
