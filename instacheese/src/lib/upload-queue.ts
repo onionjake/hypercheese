@@ -5,6 +5,7 @@ import { AppState } from 'react-native';
 import { type Session } from './api';
 import {
   assetInfo,
+  excludedAssetIds,
   libraryCounts,
   markStatus,
   markedForSync,
@@ -722,6 +723,14 @@ async function settle(
   opts: { retrySoon?: boolean } = {}
 ) {
   item.error = error ?? null;
+  if (drainEpoch !== epoch) {
+    // Signed out since this drain started: the queue was cleared, and a row
+    // under the same key now belongs to the next account — this outcome
+    // (the old account's manifest/upload) must not mark it done or failed.
+    if (current?.key === item.key) current = null;
+    resolvedThisRun.delete(item.key);
+    return;
+  }
   const db = await openDb();
   const now = Date.now();
   // Backup items are retried through their catalog marks. Picker and sync
@@ -908,6 +917,30 @@ async function drain(trigger: string, sess: Session): Promise<void> {
     if (rows.length === 0) break;
     const batch = rows.map(rowToItem);
 
+    // "Won't upload" wins over a backup/sync row however it got (back) into
+    // the queue: enqueued by a scan or Back up that read the marks just
+    // before the photo was excluded, or a failed row re-queued by Retry
+    // after removeQueued() had to spare it mid-upload. Picker shares are an
+    // explicit choice and go ahead. (Fails closed: a catalog error stops the
+    // drain rather than risk uploading an excluded photo.)
+    if (batch.some((b) => b.source !== 'picker' && b.assetId)) {
+      const excluded = await excludedAssetIds();
+      const optedOut = batch.filter(
+        (b) => b.source !== 'picker' && !!b.assetId && excluded.has(b.assetId)
+      );
+      if (optedOut.length > 0) {
+        await db.runAsync(
+          `DELETE FROM uploads WHERE status = 'queued' AND source != 'picker'
+           AND key IN (${optedOut.map(() => '?').join(',')})`,
+          ...optedOut.map((b) => b.key)
+        );
+        log('queue', `dropped ${optedOut.length} queued items marked won't upload`);
+        await refreshAndBroadcast();
+        // Re-read the batch (a row that became a picker share meanwhile stays).
+        continue;
+      }
+    }
+
     // One write for the whole batch; per-item events keep screens accurate.
     const placeholders = batch.map(() => '?').join(',');
     await db.runAsync(
@@ -945,7 +978,9 @@ async function drain(trigger: string, sess: Session): Promise<void> {
           if (item.assetId) await setSize(item.assetId, stat.size);
         } catch (err) {
           logError('queue', `stat failed for ${item.filename}`, err);
-          await settle(item, 'failed', String(err));
+          // Removed meanwhile (marked "won't upload"): don't record a failure
+          // the catalog would then show for an excluded photo.
+          if (await stillWanted(item.key)) await settle(item, 'failed', String(err));
           continue;
         }
       }
@@ -979,9 +1014,18 @@ async function drain(trigger: string, sess: Session): Promise<void> {
     // accurate and one bad file can't fail the batch.
     for (const item of candidates.filter((c) => neededPaths.has(c.path))) {
       if (stopRequested) break;
-      if (!(await stillWanted(item.key))) continue; // removed mid-batch
       // Connectivity can change mid-run (leave the house, Wi-Fi drops).
       await ensureNetwork();
+      // Claim the item before resolving its file: that can take seconds
+      // (iCloud download), and removeQueued() must not delete a row the
+      // drain is about to upload anyway. The existence check comes after
+      // the claim, with no await in between, so a removal can't land in a
+      // gap and still be uploaded.
+      setCurrent(item, 'hashing');
+      if (!(await stillWanted(item.key))) {
+        current = null; // removed mid-batch
+        continue;
+      }
       const attemptStarted = Date.now();
       const startedInBackground = AppState.currentState === 'background';
       // Counted up front, not when the transfer dies: if iOS kills the
@@ -989,10 +1033,6 @@ async function drain(trigger: string, sess: Session): Promise<void> {
       // would be first in line again on relaunch. settle() clears it.
       await db.runAsync('UPDATE uploads SET deferrals = deferrals + 1 WHERE key = ?', item.key);
       try {
-        // Claim the item before resolving its file: that can take seconds
-        // (iCloud download), and removeQueued() must not delete a row the
-        // drain is about to upload anyway.
-        setCurrent(item, 'hashing');
         const localUri = await resolveLocalUri(item);
         const outcome = await hashAndUpload(
           sess,
@@ -1126,7 +1166,9 @@ export function kick(trigger: string, opts: { auto?: boolean } = {}): Promise<vo
       // instead of a new drain whose in-flight rows resetInFlight would
       // flip back to 'queued'.
       runPromise = null;
-      await refreshAndBroadcast();
+      // Must not reject: callers fire kick() without a catch, and the
+      // pending kick below would be lost.
+      await refreshAndBroadcast().catch(() => {});
       if (pendingKick) {
         pendingKick = false;
         // The retry that set pendingKick skipped this step while the drain

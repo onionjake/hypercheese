@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { accent, usePalette } from '@/lib/theme';
@@ -36,6 +36,18 @@ export default function QueueScreen() {
   const palette = usePalette();
   const [summary, setSummary] = useState<queue.QueueSummary>(queue.getSummary());
   const [items, setItems] = useState<queue.QueueItem[]>([]);
+  // Only the newest list load may land: an older one resolving last would
+  // put back rows (statuses) that item events have since updated.
+  const loadSeq = useRef(0);
+  const reload = useCallback(() => {
+    const seq = ++loadSeq.current;
+    queue
+      .listItems()
+      .then((next) => {
+        if (seq === loadSeq.current) setItems(next);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => queue.subscribeSummary(setSummary), []);
 
@@ -61,15 +73,15 @@ export default function QueueScreen() {
   // uploaded file.
   const { total } = summary;
   useEffect(() => {
-    queue.listItems().then(setItems);
-  }, [total]);
+    reload();
+  }, [total, reload]);
 
   // The list is capped, so on a big queue the drain eventually moves past the
   // loaded rows; reload when the file in flight isn't among them.
   const currentKey = summary.current?.key;
   useEffect(() => {
     if (currentKey && !items.some((i) => i.key === currentKey)) {
-      queue.listItems().then(setItems);
+      reload();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentKey]);

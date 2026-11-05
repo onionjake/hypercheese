@@ -95,7 +95,13 @@ export default function UploadScreen() {
   // progress here, from the uploads pill, or leave the screen entirely.
   const share = async (targets: UploadFile[]) => {
     if (targets.length === 0) return;
-    await enqueuePicked(targets);
+    try {
+      await enqueuePicked(targets);
+    } catch (err) {
+      // Otherwise an unhandled rejection: the rows just stay "Ready".
+      logError('picker', 'queueing picked files failed', err);
+      Alert.alert("Couldn't queue those uploads", err instanceof Error ? err.message : String(err));
+    }
   };
 
   const readyFiles = files.filter((f) => f.status === 'ready');
