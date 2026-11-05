@@ -2,6 +2,7 @@ import * as MediaLibrary from 'expo-media-library/legacy';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
+import { loadStoredSession } from './auth';
 import { libraryCounts, refreshFromLibrary } from './library-db';
 import { log, logError } from './log';
 import { getSettings, updateSettings } from './settings';
@@ -77,6 +78,12 @@ export function refreshMarkReminder(unmarked?: number): Promise<void> {
 async function scheduleMarkReminder(unmarked?: number): Promise<void> {
   try {
     if (!(await getSettings()).nightlyMarkReminder) return;
+    // Signed out: a refresh still in flight from before the sign-out (the
+    // background task finishing its drain, a Back up press still awaiting
+    // its enqueue) runs after sign-out's cancel, and the catalog it would
+    // count survives sign-out — it would re-arm a nightly reminder nobody
+    // can act on. Sign-out deletes the stored session before it cancels.
+    if (!(await loadStoredSession())) return;
     const permission = await Notifications.getPermissionsAsync();
     if (!permission.granted) return;
 
