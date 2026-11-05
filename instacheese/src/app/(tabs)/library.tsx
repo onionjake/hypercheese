@@ -350,7 +350,7 @@ export default function LibraryScreen() {
       onLongPress={() => showDetails(item)}
       accessibilityRole="checkbox"
       accessibilityLabel={item.filename}
-      accessibilityState={{ checked: item.selected, disabled: !item.supported }}
+      accessibilityState={{ checked: item.selected }}
       accessibilityHint="Long press for details"
     >
       <Image source={{ uri: item.uri }} style={styles.thumb} contentFit="cover" recyclingKey={item.id} />

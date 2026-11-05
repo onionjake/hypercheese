@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -133,8 +134,15 @@ export default function ItemScreen() {
   const insets = useSafeAreaInsets();
   const [keyboardShown, setKeyboardShown] = useState(false);
   useEffect(() => {
-    const shown = Keyboard.addListener('keyboardDidShow', () => setKeyboardShown(true));
-    const hidden = Keyboard.addListener('keyboardDidHide', () => setKeyboardShown(false));
+    // iOS: the "will" events, so the padding changes with the keyboard
+    // animation rather than snapping after it.
+    const ios = Platform.OS === 'ios';
+    const shown = Keyboard.addListener(ios ? 'keyboardWillShow' : 'keyboardDidShow', () =>
+      setKeyboardShown(true)
+    );
+    const hidden = Keyboard.addListener(ios ? 'keyboardWillHide' : 'keyboardDidHide', () =>
+      setKeyboardShown(false)
+    );
     return () => {
       shown.remove();
       hidden.remove();
