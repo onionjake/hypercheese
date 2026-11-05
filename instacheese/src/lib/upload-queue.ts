@@ -1223,8 +1223,15 @@ export function stop(opts: { byUser?: boolean } = {}): void {
 // returns to the foreground, and when connectivity changes to something
 // uploads are allowed on. Also resumes whatever the queue still holds from a
 // previous app run.
+// Mounted startAutoRetry registrations: only the last one to go stops the
+// queue and drops the session. A second copy of the tabs (briefly stacked by
+// navigation) unmounting must not leave the first one with no session, which
+// would make every later kick a silent no-op.
+let autoRetryUsers = 0;
+
 export function startAutoRetry(s: Session): () => void {
   session = s;
+  autoRetryUsers++;
 
   const tryKick = async (trigger: string) => {
     // Pinned at entry: a sign-out during the awaits below must make the
@@ -1280,6 +1287,7 @@ export function startAutoRetry(s: Session): () => void {
     // them. (A new sign-in calls startAutoRetry again; sign-out follows up
     // with clearAll().) Not a user Stop: a quick re-sign-in's startup
     // retry should still resume once this drain winds down.
+    if (--autoRetryUsers > 0) return;
     stop({ byUser: false });
     session = null;
   };

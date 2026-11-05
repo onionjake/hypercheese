@@ -45,7 +45,11 @@ export const FeedCard = memo(function FeedCard({
           {tagLine}
         </Text>
       ) : null}
-      <Pressable onPress={() => onOpen(item)}>
+      <Pressable
+        onPress={() => onOpen(item)}
+        accessibilityRole="button"
+        accessibilityLabel={item.variety === 'video' ? 'Open video' : 'Open photo'}
+      >
         <Image
           source={{ uri: resizedUrl(session, item, 'large') }}
           style={{ width: imageSize, height: imageSize, alignSelf: 'center' }}

@@ -75,7 +75,10 @@ function RootNavigator() {
     void (
       Notifications as { clearLastNotificationResponseAsync?: () => Promise<void> }
     ).clearLastNotificationResponseAsync?.();
-    router.push('/library');
+    // Back to the existing tabs first: pushed from a photo or the queue,
+    // '/library' would stack a second copy of the tabs on the root stack.
+    if (router.canDismiss()) router.dismissAll();
+    router.navigate('/library');
   }, [notificationResponse, status, router]);
 
   return (

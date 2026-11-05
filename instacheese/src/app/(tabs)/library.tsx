@@ -348,6 +348,10 @@ export default function LibraryScreen() {
       style={styles.cell}
       onPress={() => toggle(item)}
       onLongPress={() => showDetails(item)}
+      accessibilityRole="checkbox"
+      accessibilityLabel={item.filename}
+      accessibilityState={{ checked: item.selected, disabled: !item.supported }}
+      accessibilityHint="Long press for details"
     >
       <Image source={{ uri: item.uri }} style={styles.thumb} contentFit="cover" recyclingKey={item.id} />
       {!item.supported ? (
@@ -398,7 +402,13 @@ export default function LibraryScreen() {
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
       <View style={[styles.titleBar, { borderColor: palette.border }]}>
         <Text style={[styles.title, { color: palette.text }]}>Back up library</Text>
-        <Pressable onPress={rescan} disabled={scanning} hitSlop={8}>
+        <Pressable
+          onPress={rescan}
+          disabled={scanning}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Rescan library"
+        >
           {scanning ? (
             <ActivityIndicator size="small" />
           ) : (

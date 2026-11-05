@@ -23,6 +23,9 @@ export function ActionRow({ item, canWrite, onToggleBullhorn, onToggleStar, onPr
         disabled={!canWrite}
         hitSlop={8}
         style={styles.button}
+        accessibilityRole="button"
+        accessibilityLabel="Bullhorn"
+        accessibilityState={{ selected: item.bullhorned, disabled: !canWrite }}
       >
         <Ionicons
           name={item.bullhorned ? 'megaphone' : 'megaphone-outline'}
@@ -31,12 +34,26 @@ export function ActionRow({ item, canWrite, onToggleBullhorn, onToggleStar, onPr
         />
       </Pressable>
       {onPressComments ? (
-        <Pressable onPress={onPressComments} hitSlop={8} style={styles.button}>
+        <Pressable
+          onPress={onPressComments}
+          hitSlop={8}
+          style={styles.button}
+          accessibilityRole="button"
+          accessibilityLabel="Comments"
+        >
           <Ionicons name="chatbubble-outline" size={25} color={palette.text} />
         </Pressable>
       ) : null}
       <View style={styles.spacer} />
-      <Pressable onPress={onToggleStar} disabled={!canWrite} hitSlop={8} style={styles.button}>
+      <Pressable
+        onPress={onToggleStar}
+        disabled={!canWrite}
+        hitSlop={8}
+        style={styles.button}
+        accessibilityRole="button"
+        accessibilityLabel="Star"
+        accessibilityState={{ selected: item.starred, disabled: !canWrite }}
+      >
         <Ionicons
           name={item.starred ? 'star' : 'star-outline'}
           size={26}

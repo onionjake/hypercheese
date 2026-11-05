@@ -7,6 +7,7 @@ import {
   Alert,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -140,7 +141,9 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]} edges={['top']}>
-      <View style={styles.container}>
+      {/* Scrolls: on a small phone, with the compatibility notice or large
+          text, Sign out would otherwise end up behind the tab bar. */}
+      <ScrollView contentContainerStyle={styles.container}>
         <View style={[styles.avatar, { backgroundColor: accent }]}>
           <Text style={styles.avatarText}>{initial}</Text>
         </View>
@@ -221,14 +224,15 @@ export default function ProfileScreen() {
         <Pressable style={[styles.button, { borderColor: palette.border }]} onPress={signOut}>
           <Text style={{ color: '#ED4956', fontWeight: '600' }}>Sign out</Text>
         </Pressable>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  container: { alignItems: 'center', padding: 24, gap: 6, marginTop: 32 },
+  // paddingBottom leaves the last button clear of the floating upload pill.
+  container: { alignItems: 'center', padding: 24, paddingTop: 56, paddingBottom: 96, gap: 6 },
   avatar: {
     width: 88,
     height: 88,

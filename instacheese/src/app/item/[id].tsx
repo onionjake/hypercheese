@@ -6,6 +6,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Pressable,
   ScrollView,
@@ -15,6 +16,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActionRow } from '@/components/action-row';
 import * as api from '@/lib/api';
@@ -128,6 +130,16 @@ export default function ItemScreen() {
   const tags = useTagMap(session);
   const { width } = useWindowDimensions();
   const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
+  const [keyboardShown, setKeyboardShown] = useState(false);
+  useEffect(() => {
+    const shown = Keyboard.addListener('keyboardDidShow', () => setKeyboardShown(true));
+    const hidden = Keyboard.addListener('keyboardDidHide', () => setKeyboardShown(false));
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, []);
 
   const [item, setItem] = useState<FeedItem | null>(null);
   const [details, setDetails] = useState<ItemDetails | null>(null);
@@ -262,7 +274,14 @@ export default function ItemScreen() {
                 />
               </View>
               {infoRows.length ? (
-                <Pressable onPress={() => setShowInfo((v) => !v)} hitSlop={8} style={styles.infoButton}>
+                <Pressable
+                  onPress={() => setShowInfo((v) => !v)}
+                  hitSlop={8}
+                  style={styles.infoButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Photo info"
+                  accessibilityState={{ expanded: showInfo }}
+                >
                   <Ionicons
                     name={showInfo ? 'information-circle' : 'information-circle-outline'}
                     size={26}
@@ -311,7 +330,19 @@ export default function ItemScreen() {
         </ScrollView>
 
         {canWrite ? (
-          <View style={[styles.inputRow, { borderColor: palette.border, backgroundColor: palette.card }]}>
+          <View
+            style={[
+              styles.inputRow,
+              {
+                borderColor: palette.border,
+                backgroundColor: palette.card,
+                // Edge-to-edge: without this the field sits under Android's
+                // navigation buttons / the iOS home indicator. With the
+                // keyboard up, the keyboard covers that area instead.
+                paddingBottom: keyboardShown ? 10 : 10 + insets.bottom,
+              },
+            ]}
+          >
             <TextInput
               style={[
                 styles.input,

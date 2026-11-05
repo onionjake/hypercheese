@@ -44,7 +44,12 @@ export default function UploadIndicator() {
   return (
     // Sits above the tab bar (when there is one); pointerEvents lets taps
     // everywhere else fall through to the screen underneath.
-    <View pointerEvents="box-none" style={[styles.overlay, { bottom: insets.bottom + 64 }]}>
+    // On the Upload tab it rides above that screen's bottom button row,
+    // which it would otherwise cover ("Upload N" would open the queue).
+    <View
+      pointerEvents="box-none"
+      style={[styles.overlay, { bottom: insets.bottom + 64 + (pathname === '/upload' ? 80 : 0) }]}
+    >
       <Pressable
         onPress={() => router.push('/queue')}
         style={styles.pill}
