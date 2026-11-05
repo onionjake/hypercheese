@@ -1097,7 +1097,8 @@ async function drain(trigger: string, sess: Session): Promise<void> {
               await uncountAttempt(item.key);
               throw new Paused(permission.reason ?? 'Uploads paused');
             }
-          }
+          },
+          () => stopRequested || drainEpoch !== epoch
         );
         await settle(item, outcome === 'deduped' ? 'exists' : 'done');
       } catch (err) {

@@ -350,8 +350,12 @@ export async function manifestCheck(
 // has the server recorded the file? It saves the path record (what the
 // manifest checks) right after storing the bytes, before the import. Polls
 // for a few minutes in the foreground; in the background (where JS timers
-// may never fire) it only asks once.
-async function serverStoredAfterTimeout(session: Session, file: ProtocolFile): Promise<boolean> {
+// may never fire) it only asks once. Gives up early when the caller stops.
+async function serverStoredAfterTimeout(
+  session: Session,
+  file: ProtocolFile,
+  shouldStop: () => boolean
+): Promise<boolean> {
   const deadline = Date.now() + 5 * 60_000;
   for (;;) {
     try {
@@ -360,10 +364,37 @@ async function serverStoredAfterTimeout(session: Session, file: ProtocolFile): P
     } catch {
       // unreachable right now; try again below if there's time
     }
-    if (AppState.currentState !== 'active' || Date.now() >= deadline) return false;
+    if (shouldStop() || AppState.currentState !== 'active' || Date.now() >= deadline) return false;
     log('upload', `waiting for the server to finish storing ${file.path}`);
-    await new Promise((resolve) => setTimeout(resolve, 15_000));
+    await foregroundWait(15_000, shouldStop);
   }
+}
+
+// Sleeps up to `ms`, waking early when the app leaves the foreground (on
+// Android, JS timers are paused there and a plain sleep would never end —
+// hanging the drain, and every background wakeup waiting on it) or when
+// shouldStop() turns true.
+function foregroundWait(ms: number, shouldStop: () => boolean): Promise<void> {
+  return new Promise((resolve) => {
+    let sub: { remove(): void } | null = null;
+    const finish = () => {
+      clearTimeout(timer);
+      clearInterval(poll);
+      sub?.remove();
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    const poll = setInterval(() => {
+      if (shouldStop()) finish();
+    }, 1000);
+    try {
+      sub = AppState.addEventListener('change', (state) => {
+        if (state !== 'active') finish();
+      });
+    } catch {
+      // no AppState events here; the timer alone will do
+    }
+  });
 }
 
 // Steps three and four for a single file: hash it (using the cache when a
@@ -380,7 +411,10 @@ export async function hashAndUpload(
   // Runs right before the bytes go out; throw to stop. Hashing a big video
   // can take minutes, and the network rules must hold at the moment the
   // transfer starts, not just when the file was picked up.
-  beforeUpload?: () => Promise<void>
+  beforeUpload?: () => Promise<void>,
+  // Polled while confirming a timed-out upload with the server: true once
+  // the caller no longer wants the result (Stop, sign-out).
+  shouldStop: () => boolean = () => false
 ): Promise<'uploaded' | 'deduped'> {
   // Log the start of each phase, not just the outcome — a process death
   // mid-transfer otherwise leaves no trace of which file (or phase) it died in.
@@ -443,7 +477,7 @@ export async function hashAndUpload(
   try {
     result = await task.uploadAsync();
   } catch (err) {
-    if (fullySent && (await serverStoredAfterTimeout(session, file))) {
+    if (fullySent && (await serverStoredAfterTimeout(session, file, shouldStop))) {
       log('upload', `uploaded ${file.path} (${file.size} bytes; confirmed after the response timed out)`);
       return 'uploaded';
     }
