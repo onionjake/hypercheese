@@ -345,7 +345,10 @@ export function enqueue(
     }
     const db = await openDb();
     const now = Date.now();
-    const activeKey = current?.key;
+    // Same claim rule as removeQueued(): a file still in the size check is
+    // like the rest of its batch. (Skipping it would drop a re-add right
+    // after a "won't upload" removal deleted its row.)
+    const activeKey = current && current.phase !== 'checking' ? current.key : undefined;
     const accepted = items.filter((i) => i.key !== activeKey);
     if (accepted.length === 0) return 0;
 
