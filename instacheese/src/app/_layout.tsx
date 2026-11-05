@@ -25,6 +25,11 @@ function RootNavigator() {
     SplashScreen.hideAsync();
     const onLogin = segments[0] === 'login';
     if (status === 'signedOut' && !onLogin) {
+      // A forced sign-out (startup 401) can land while an item or the queue
+      // is pushed: replace() would only swap that top screen, leaving the old
+      // account's tabs (and feed state) mounted under the login screen and
+      // reachable again after the next sign-in.
+      if (router.canDismiss()) router.dismissAll();
       router.replace('/login');
     } else if (status === 'signedIn' && onLogin) {
       router.replace('/');
