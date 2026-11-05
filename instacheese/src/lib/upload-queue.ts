@@ -535,6 +535,9 @@ export async function clearAll(): Promise<void> {
   stopRequested = true;
   pendingKick = false;
   session = null;
+  // The old drain may still be finishing a file; it's no longer this
+  // account's (setCurrent ignores it from here on).
+  current = null;
   const db = await openDb();
   // Behind any enqueue already holding the write chain, so its rows are
   // deleted rather than landing after the DELETE.
@@ -675,6 +678,9 @@ async function stillWanted(key: string): Promise<boolean> {
 
 async function setItemStatus(item: QueueItem, status: QueueItemStatus): Promise<void> {
   item.status = status;
+  // A drain from before a sign-out still finishing its file: the row under
+  // this key (if any) now belongs to the next account.
+  if (drainEpoch !== epoch) return;
   const db = await openDb();
   await db.runAsync(
     'UPDATE uploads SET status = ?, updated_at = ? WHERE key = ?',
@@ -686,6 +692,9 @@ async function setItemStatus(item: QueueItem, status: QueueItemStatus): Promise<
 }
 
 function setCurrent(item: QueueItem, phase: QueueCurrent['phase']): void {
+  // Same: the old account's file mustn't show (or be spared/skipped by
+  // removeQueued/enqueue) as the next account's current item.
+  if (drainEpoch !== epoch) return;
   current = {
     key: item.key,
     filename: item.filename,
@@ -1001,6 +1010,7 @@ async function drain(trigger: string, sess: Session): Promise<void> {
     // Nothing is in flight during the manifest; a lingering `current` would
     // make removeQueued() skip that item.
     current = null;
+    broadcastSummary();
     if (stopRequested || candidates.length === 0) continue;
 
     // The server's manifest decides what actually needs work. A manifest
@@ -1036,6 +1046,7 @@ async function drain(trigger: string, sess: Session): Promise<void> {
       setCurrent(item, 'hashing');
       if (!(await stillWanted(item.key))) {
         current = null; // removed mid-batch
+        broadcastSummary();
         continue;
       }
       // The batch-level "won't upload" check ran when this batch was read; a
