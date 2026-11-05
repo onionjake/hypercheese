@@ -6,6 +6,7 @@ import { type Session } from './api';
 import {
   assetInfo,
   excludedAssetIds,
+  isExcluded,
   libraryCounts,
   markStatus,
   markedForSync,
@@ -1035,6 +1036,18 @@ async function drain(trigger: string, sess: Session): Promise<void> {
       setCurrent(item, 'hashing');
       if (!(await stillWanted(item.key))) {
         current = null; // removed mid-batch
+        continue;
+      }
+      // The batch-level "won't upload" check ran when this batch was read; a
+      // stale enqueue (a Sync page or auto-retry that read the marks before
+      // the exclusion) can have re-inserted the row since removeQueued()
+      // deleted it. Past this point removeQueued() spares the file, so this
+      // is the last chance for "won't upload" to win.
+      if (item.source !== 'picker' && item.assetId && (await isExcluded(item.assetId))) {
+        current = null;
+        await db.runAsync(`DELETE FROM uploads WHERE key = ? AND source != 'picker'`, item.key);
+        log('queue', `dropped ${item.filename}: marked won't upload`);
+        await refreshAndBroadcast();
         continue;
       }
       const attemptStarted = Date.now();

@@ -590,6 +590,15 @@ export async function resetFailures(ids: string[]): Promise<void> {
 }
 
 // Assets the user marked "won't upload" — every upload flow honours that.
+export async function isExcluded(id: string): Promise<boolean> {
+  const db = await openDb();
+  const row = await db.getFirstAsync<{ excluded: number }>(
+    'SELECT excluded FROM assets WHERE id = ?',
+    id
+  );
+  return !!row?.excluded;
+}
+
 export async function excludedAssetIds(): Promise<Set<string>> {
   const db = await openDb();
   const rows = await db.getAllAsync<{ id: string }>('SELECT id FROM assets WHERE excluded = 1');
