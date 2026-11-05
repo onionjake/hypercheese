@@ -346,6 +346,26 @@ export async function manifestCheck(
   return new Set(needed.map((n) => n.path));
 }
 
+// After a transfer whose whole body went out but whose response never came:
+// has the server recorded the file? It saves the path record (what the
+// manifest checks) right after storing the bytes, before the import. Polls
+// for a few minutes in the foreground; in the background (where JS timers
+// may never fire) it only asks once.
+async function serverStoredAfterTimeout(session: Session, file: ProtocolFile): Promise<boolean> {
+  const deadline = Date.now() + 5 * 60_000;
+  for (;;) {
+    try {
+      const needed = await manifestCheck(session, [file]);
+      if (!needed.has(file.path)) return true;
+    } catch {
+      // unreachable right now; try again below if there's time
+    }
+    if (AppState.currentState !== 'active' || Date.now() >= deadline) return false;
+    log('upload', `waiting for the server to finish storing ${file.path}`);
+    await new Promise((resolve) => setTimeout(resolve, 15_000));
+  }
+}
+
 // Steps three and four for a single file: hash it (using the cache when a
 // stable cacheKey exists), offer the hash to the server, and upload the bytes
 // only if the server doesn't already have that content. Posting hashes
@@ -379,6 +399,11 @@ export async function hashAndUpload(
   await beforeUpload?.();
   onPhase?.('uploading');
   log('upload', `uploading ${file.path}`);
+  // Both native upload clients give up after 60s without a response, but the
+  // server only answers once it has hashed, stored and imported the file — a
+  // big video can take longer than that after its last byte arrived. Reported
+  // as interrupted, it would be marked failed and sent again in full.
+  let fullySent = false;
   const task = LegacyFileSystem.createUploadTask(
     `${session.baseUrl}/files/upload`,
     file.localUri,
@@ -407,14 +432,21 @@ export async function hashAndUpload(
         'Content-Type': 'application/octet-stream',
       },
     },
-    onProgress
-      ? (data) => onProgress(data.totalBytesSent, data.totalBytesExpectedToSend)
-      : undefined
+    (data) => {
+      if (data.totalBytesExpectedToSend > 0 && data.totalBytesSent >= data.totalBytesExpectedToSend) {
+        fullySent = true;
+      }
+      onProgress?.(data.totalBytesSent, data.totalBytesExpectedToSend);
+    }
   );
   let result: Awaited<ReturnType<typeof task.uploadAsync>>;
   try {
     result = await task.uploadAsync();
   } catch (err) {
+    if (fullySent && (await serverStoredAfterTimeout(session, file))) {
+      log('upload', `uploaded ${file.path} (${file.size} bytes; confirmed after the response timed out)`);
+      return 'uploaded';
+    }
     // Connection dropped, timed out, or the OS cancelled the transfer.
     throw new UploadInterrupted(`Upload interrupted: ${String(err)}`);
   }
