@@ -1,0 +1,827 @@
+{
+  "when": "2026-11-07T17:36:29.750Z",
+  "node": "v22.23.4",
+  "file": [
+    {
+      "variant": "after",
+      "lib": "js-sha256",
+      "size": 104857600,
+      "runs": [
+        {
+          "seconds": 1.771571595,
+          "mbPerSec": 56.44705541804536,
+          "maxBlockMs": 20.476317999999992,
+          "p95BlockMs": 20.283531999999923,
+          "yields": 87,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 39.019399642944336
+        },
+        {
+          "seconds": 1.72298857,
+          "mbPerSec": 58.03869029728967,
+          "maxBlockMs": 20.33865999999989,
+          "p95BlockMs": 20.264044999999896,
+          "yields": 85,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 38.019399642944336
+        },
+        {
+          "seconds": 1.7043427540000002,
+          "mbPerSec": 58.6736439987235,
+          "maxBlockMs": 22.818092000000433,
+          "p95BlockMs": 20.255711000000247,
+          "yields": 84,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019399642944336
+        },
+        {
+          "seconds": 1.6529421350000002,
+          "mbPerSec": 60.49818555808064,
+          "maxBlockMs": 20.33803099999932,
+          "p95BlockMs": 20.24559500000032,
+          "yields": 81,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019399642944336
+        },
+        {
+          "seconds": 1.6727799679999997,
+          "mbPerSec": 59.78072544685089,
+          "maxBlockMs": 20.273134000000027,
+          "p95BlockMs": 20.23837999999978,
+          "yields": 82,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019399642944336
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 58.6736439987235,
+        "seconds": 1.7043427540000002,
+        "maxBlockMs": 20.33865999999989,
+        "p95BlockMs": 20.255711000000247,
+        "yields": 84,
+        "allocations": 100,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 37.019399642944336
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "js-sha256",
+      "size": 1073741824,
+      "runs": [
+        {
+          "seconds": 17.174136367,
+          "mbPerSec": 59.62454111914529,
+          "maxBlockMs": 21.00688699999955,
+          "p95BlockMs": 20.245139999999992,
+          "yields": 850,
+          "allocations": 1024,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 40.019399642944336
+        },
+        {
+          "seconds": 17.217233707999995,
+          "mbPerSec": 59.475291871318326,
+          "maxBlockMs": 20.553490000002057,
+          "p95BlockMs": 20.25285900000017,
+          "yields": 853,
+          "allocations": 1024,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 38.019399642944336
+        },
+        {
+          "seconds": 17.445333640999998,
+          "mbPerSec": 58.69764494462844,
+          "maxBlockMs": 22.064332999994804,
+          "p95BlockMs": 20.25358299999789,
+          "yields": 864,
+          "allocations": 1024,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019399642944336
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 59.475291871318326,
+        "seconds": 17.217233707999995,
+        "maxBlockMs": 21.00688699999955,
+        "p95BlockMs": 20.25285900000017,
+        "yields": 853,
+        "allocations": 1024,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 38.019399642944336
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "js-sha256",
+      "size": 104857600,
+      "runs": [
+        {
+          "seconds": 37.803250938000005,
+          "mbPerSec": 2.645275142183064,
+          "maxBlockMs": 30.449541000001773,
+          "p95BlockMs": 24.63235800000257,
+          "yields": 1615,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 41.01939582824707
+        },
+        {
+          "seconds": 37.528314074,
+          "mbPerSec": 2.6646547404931527,
+          "maxBlockMs": 29.278592999995453,
+          "p95BlockMs": 24.394154000001436,
+          "yields": 1604,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 70.01939582824707
+        },
+        {
+          "seconds": 37.966217756,
+          "mbPerSec": 2.633920519622908,
+          "maxBlockMs": 34.88350500000524,
+          "p95BlockMs": 24.39097199999378,
+          "yields": 1617,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 70.01939582824707
+        }
+      ],
+      "jitless": true,
+      "median": {
+        "mbPerSec": 2.645275142183064,
+        "seconds": 37.803250938000005,
+        "maxBlockMs": 30.449541000001773,
+        "p95BlockMs": 24.394154000001436,
+        "yields": 1615,
+        "allocations": 100,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 70.01939582824707
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "@noble/hashes",
+      "size": 104857600,
+      "runs": [
+        {
+          "seconds": 0.6397681759999999,
+          "mbPerSec": 156.30661816476476,
+          "maxBlockMs": 20.760068999999987,
+          "p95BlockMs": 20.137159999999994,
+          "yields": 31,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 44.019460678100586
+        },
+        {
+          "seconds": 0.60428167,
+          "mbPerSec": 165.48574111142574,
+          "maxBlockMs": 20.509315000000015,
+          "p95BlockMs": 20.43898800000011,
+          "yields": 29,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 42.019460678100586
+        },
+        {
+          "seconds": 0.5805783320000001,
+          "mbPerSec": 172.24204640141477,
+          "maxBlockMs": 20.211185999999998,
+          "p95BlockMs": 20.20777700000008,
+          "yields": 28,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019460678100586
+        },
+        {
+          "seconds": 0.596436967,
+          "mbPerSec": 167.66231057572926,
+          "maxBlockMs": 20.242279000000053,
+          "p95BlockMs": 20.163481000000047,
+          "yields": 29,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019460678100586
+        },
+        {
+          "seconds": 0.59064142,
+          "mbPerSec": 169.30746238555366,
+          "maxBlockMs": 20.22272699999985,
+          "p95BlockMs": 20.135365999999976,
+          "yields": 29,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 35.019460678100586
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 167.66231057572926,
+        "seconds": 0.596436967,
+        "maxBlockMs": 20.242279000000053,
+        "p95BlockMs": 20.163481000000047,
+        "yields": 29,
+        "allocations": 100,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 37.019460678100586
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "@noble/hashes",
+      "size": 1073741824,
+      "runs": [
+        {
+          "seconds": 6.153498042,
+          "mbPerSec": 166.4094134768232,
+          "maxBlockMs": 22.45395399999984,
+          "p95BlockMs": 20.134431000000404,
+          "yields": 305,
+          "allocations": 1024,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 43.019460678100586
+        },
+        {
+          "seconds": 6.204088449,
+          "mbPerSec": 165.05245023788345,
+          "maxBlockMs": 20.389343000000736,
+          "p95BlockMs": 20.12966100000085,
+          "yields": 308,
+          "allocations": 1024,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019460678100586
+        },
+        {
+          "seconds": 6.153801750999999,
+          "mbPerSec": 166.40120066162336,
+          "maxBlockMs": 20.914596000002348,
+          "p95BlockMs": 20.14730000000054,
+          "yields": 305,
+          "allocations": 1024,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019460678100586
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 166.40120066162336,
+        "seconds": 6.153801750999999,
+        "maxBlockMs": 20.914596000002348,
+        "p95BlockMs": 20.134431000000404,
+        "yields": 305,
+        "allocations": 1024,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 37.019460678100586
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "@noble/hashes",
+      "size": 104857600,
+      "runs": [
+        {
+          "seconds": 67.435196721,
+          "mbPerSec": 1.4829051424544744,
+          "maxBlockMs": 36.41848899999604,
+          "p95BlockMs": 29.847649000003003,
+          "yields": 3065,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 41.019487380981445
+        },
+        {
+          "seconds": 67.75131886800001,
+          "mbPerSec": 1.4759860275905496,
+          "maxBlockMs": 36.402713999996195,
+          "p95BlockMs": 29.69994200000656,
+          "yields": 3104,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 69.01945686340332
+        },
+        {
+          "seconds": 67.471336335,
+          "mbPerSec": 1.4821108552451496,
+          "maxBlockMs": 34.657070999994176,
+          "p95BlockMs": 29.513850000017555,
+          "yields": 3115,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 69.01945686340332
+        }
+      ],
+      "jitless": true,
+      "median": {
+        "mbPerSec": 1.4821108552451496,
+        "seconds": 67.471336335,
+        "maxBlockMs": 36.402713999996195,
+        "p95BlockMs": 29.69994200000656,
+        "yields": 3104,
+        "allocations": 100,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 69.01945686340332
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "@stablelib/sha256",
+      "size": 104857600,
+      "runs": [
+        {
+          "seconds": 0.823946688,
+          "mbPerSec": 121.36707563293221,
+          "maxBlockMs": 20.619633999999905,
+          "p95BlockMs": 20.337624000000005,
+          "yields": 40,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 40.019765853881836
+        },
+        {
+          "seconds": 0.8629152489999999,
+          "mbPerSec": 115.88623577562946,
+          "maxBlockMs": 20.75663099999997,
+          "p95BlockMs": 20.196144999999888,
+          "yields": 42,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 39.019765853881836
+        },
+        {
+          "seconds": 0.7875686989999999,
+          "mbPerSec": 126.9730502583115,
+          "maxBlockMs": 20.334632000000056,
+          "p95BlockMs": 20.137932999999975,
+          "yields": 39,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 36.019765853881836
+        },
+        {
+          "seconds": 0.9317657939999999,
+          "mbPerSec": 107.32310699098277,
+          "maxBlockMs": 20.28842900000018,
+          "p95BlockMs": 20.21201000000019,
+          "yields": 46,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019765853881836
+        },
+        {
+          "seconds": 0.8021543999999999,
+          "mbPerSec": 124.66427909639343,
+          "maxBlockMs": 20.138902000000144,
+          "p95BlockMs": 20.11678699999993,
+          "yields": 39,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019765853881836
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 121.36707563293221,
+        "seconds": 0.823946688,
+        "maxBlockMs": 20.334632000000056,
+        "p95BlockMs": 20.196144999999888,
+        "yields": 40,
+        "allocations": 100,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 37.019765853881836
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "@stablelib/sha256",
+      "size": 1073741824,
+      "runs": [
+        {
+          "seconds": 8.282075078,
+          "mbPerSec": 123.64051162975946,
+          "maxBlockMs": 21.921728999999686,
+          "p95BlockMs": 20.129353000000265,
+          "yields": 410,
+          "allocations": 1024,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 42.019765853881836
+        },
+        {
+          "seconds": 8.276703571999999,
+          "mbPerSec": 123.72075320713203,
+          "maxBlockMs": 21.15625699999873,
+          "p95BlockMs": 20.12119100000018,
+          "yields": 411,
+          "allocations": 1024,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019765853881836
+        },
+        {
+          "seconds": 8.240956345999999,
+          "mbPerSec": 124.25742316873573,
+          "maxBlockMs": 22.11308800000188,
+          "p95BlockMs": 20.122959999996965,
+          "yields": 409,
+          "allocations": 1024,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019765853881836
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 123.72075320713203,
+        "seconds": 8.276703571999999,
+        "maxBlockMs": 21.921728999999686,
+        "p95BlockMs": 20.122959999996965,
+        "yields": 410,
+        "allocations": 1024,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 37.019765853881836
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "@stablelib/sha256",
+      "size": 104857600,
+      "runs": [
+        {
+          "seconds": 35.515644399,
+          "mbPerSec": 2.8156605826027374,
+          "maxBlockMs": 28.499564000001556,
+          "p95BlockMs": 24.06934900000124,
+          "yields": 1613,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 41.019792556762695
+        },
+        {
+          "seconds": 34.602795847,
+          "mbPerSec": 2.889939889313014,
+          "maxBlockMs": 27.746548000002804,
+          "p95BlockMs": 22.327561000005517,
+          "yields": 1602,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 69.01976203918457
+        },
+        {
+          "seconds": 35.355920923,
+          "mbPerSec": 2.8283805764184535,
+          "maxBlockMs": 29.152060000007623,
+          "p95BlockMs": 24.126364000010653,
+          "yields": 1615,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 69.01976203918457
+        }
+      ],
+      "jitless": true,
+      "median": {
+        "mbPerSec": 2.8283805764184535,
+        "seconds": 35.355920923,
+        "maxBlockMs": 28.499564000001556,
+        "p95BlockMs": 24.06934900000124,
+        "yields": 1613,
+        "allocations": 100,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 69.01976203918457
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "fast-sha256",
+      "size": 104857600,
+      "runs": [
+        {
+          "seconds": 0.8344061609999999,
+          "mbPerSec": 119.84571144603522,
+          "maxBlockMs": 20.647842000000026,
+          "p95BlockMs": 20.396448000000078,
+          "yields": 41,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 40.019765853881836
+        },
+        {
+          "seconds": 0.870799487,
+          "mbPerSec": 114.8369992092106,
+          "maxBlockMs": 20.300391999999874,
+          "p95BlockMs": 20.209612000000106,
+          "yields": 43,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 40.019765853881836
+        },
+        {
+          "seconds": 0.7764039249999999,
+          "mbPerSec": 128.7989367132579,
+          "maxBlockMs": 20.142378000000008,
+          "p95BlockMs": 20.122855000000072,
+          "yields": 38,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019765853881836
+        },
+        {
+          "seconds": 0.775244153,
+          "mbPerSec": 128.99162104354497,
+          "maxBlockMs": 20.152058000000125,
+          "p95BlockMs": 20.113495000000057,
+          "yields": 38,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 36.019765853881836
+        },
+        {
+          "seconds": 0.790654223,
+          "mbPerSec": 126.47753858895155,
+          "maxBlockMs": 20.22922000000017,
+          "p95BlockMs": 20.14552999999978,
+          "yields": 39,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019765853881836
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 126.47753858895155,
+        "seconds": 0.790654223,
+        "maxBlockMs": 20.22922000000017,
+        "p95BlockMs": 20.14552999999978,
+        "yields": 39,
+        "allocations": 100,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 37.019765853881836
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "fast-sha256",
+      "size": 1073741824,
+      "runs": [
+        {
+          "seconds": 8.257888191,
+          "mbPerSec": 124.00264768854873,
+          "maxBlockMs": 20.478983999999855,
+          "p95BlockMs": 20.121417000000292,
+          "yields": 409,
+          "allocations": 1024,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 42.019765853881836
+        },
+        {
+          "seconds": 8.372764787000001,
+          "mbPerSec": 122.30129784487876,
+          "maxBlockMs": 21.822292999999263,
+          "p95BlockMs": 20.170962999998665,
+          "yields": 415,
+          "allocations": 1024,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019765853881836
+        },
+        {
+          "seconds": 8.146435413999999,
+          "mbPerSec": 125.69914913217283,
+          "maxBlockMs": 22.48426599999948,
+          "p95BlockMs": 20.124227000000246,
+          "yields": 404,
+          "allocations": 1024,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019765853881836
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 124.00264768854873,
+        "seconds": 8.257888191,
+        "maxBlockMs": 21.822292999999263,
+        "p95BlockMs": 20.124227000000246,
+        "yields": 409,
+        "allocations": 1024,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 37.019765853881836
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "fast-sha256",
+      "size": 104857600,
+      "runs": [
+        {
+          "seconds": 35.031627416,
+          "mbPerSec": 2.8545633582049055,
+          "maxBlockMs": 32.972492000000784,
+          "p95BlockMs": 24.007670999999846,
+          "yields": 1603,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 41.019792556762695
+        },
+        {
+          "seconds": 34.734980265,
+          "mbPerSec": 2.878942185574321,
+          "maxBlockMs": 41.90831099999923,
+          "p95BlockMs": 23.531036000000313,
+          "yields": 1605,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 68.01976203918457
+        },
+        {
+          "seconds": 34.645518113,
+          "mbPerSec": 2.8863762312296637,
+          "maxBlockMs": 32.52596600000106,
+          "p95BlockMs": 24.71504100000311,
+          "yields": 1590,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 69.01976203918457
+        }
+      ],
+      "jitless": true,
+      "median": {
+        "mbPerSec": 2.878942185574321,
+        "seconds": 34.734980265,
+        "maxBlockMs": 32.972492000000784,
+        "p95BlockMs": 24.007670999999846,
+        "yields": 1603,
+        "allocations": 100,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 68.01976203918457
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "node-forge",
+      "size": 104857600,
+      "runs": [
+        {
+          "seconds": 2.504484332,
+          "mbPerSec": 39.92837915665587,
+          "maxBlockMs": 20.89782599999998,
+          "p95BlockMs": 20.37548700000002,
+          "yields": 122,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 32.01943016052246
+        },
+        {
+          "seconds": 2.480522073,
+          "mbPerSec": 40.31409399193845,
+          "maxBlockMs": 20.89488100000017,
+          "p95BlockMs": 20.405249000000367,
+          "yields": 122,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 69.01939964294434
+        },
+        {
+          "seconds": 2.500741785,
+          "mbPerSec": 39.98813496052332,
+          "maxBlockMs": 24.718423999999686,
+          "p95BlockMs": 20.37236800000028,
+          "yields": 122,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 69.01939964294434
+        },
+        {
+          "seconds": 2.5172220899999993,
+          "mbPerSec": 39.72633181524322,
+          "maxBlockMs": 21.022522000000208,
+          "p95BlockMs": 20.380073000000266,
+          "yields": 123,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 70.01939964294434
+        },
+        {
+          "seconds": 2.477678582999999,
+          "mbPerSec": 40.36036017186659,
+          "maxBlockMs": 20.92201600000044,
+          "p95BlockMs": 20.36692000000039,
+          "yields": 122,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 69.01939964294434
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 39.98813496052332,
+        "seconds": 2.500741785,
+        "maxBlockMs": 20.92201600000044,
+        "p95BlockMs": 20.37548700000002,
+        "yields": 122,
+        "allocations": 100,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 69.01939964294434
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "node-forge",
+      "size": 1073741824,
+      "runs": [
+        {
+          "seconds": 24.73721544,
+          "mbPerSec": 41.39511993513204,
+          "maxBlockMs": 22.15741100000014,
+          "p95BlockMs": 20.37114400000064,
+          "yields": 1218,
+          "allocations": 1024,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 71.01939964294434
+        },
+        {
+          "seconds": 25.228113886,
+          "mbPerSec": 40.58963760141637,
+          "maxBlockMs": 22.271286999995937,
+          "p95BlockMs": 20.374392999998236,
+          "yields": 1243,
+          "allocations": 1024,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 71.01939964294434
+        },
+        {
+          "seconds": 25.257377418999997,
+          "mbPerSec": 40.54260990809325,
+          "maxBlockMs": 20.795538999998826,
+          "p95BlockMs": 20.37287600000127,
+          "yields": 1244,
+          "allocations": 1024,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 70.01939964294434
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 40.58963760141637,
+        "seconds": 25.228113886,
+        "maxBlockMs": 22.15741100000014,
+        "p95BlockMs": 20.37287600000127,
+        "yields": 1243,
+        "allocations": 1024,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 71.01939964294434
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "node-forge",
+      "size": 104857600,
+      "runs": [
+        {
+          "seconds": 44.146256939,
+          "mbPerSec": 2.265197707207138,
+          "maxBlockMs": 31.807441999997536,
+          "p95BlockMs": 26.716677999998865,
+          "yields": 1991,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 52.019426345825195
+        },
+        {
+          "seconds": 45.036711015,
+          "mbPerSec": 2.2204108103430076,
+          "maxBlockMs": 31.52632299999823,
+          "p95BlockMs": 26.521365000000515,
+          "yields": 2089,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 70.01939582824707
+        },
+        {
+          "seconds": 44.486907972,
+          "mbPerSec": 2.2478523358588975,
+          "maxBlockMs": 36.77055999998993,
+          "p95BlockMs": 26.6077590000059,
+          "yields": 2068,
+          "allocations": 100,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 70.01939582824707
+        }
+      ],
+      "jitless": true,
+      "median": {
+        "mbPerSec": 2.2478523358588975,
+        "seconds": 44.486907972,
+        "maxBlockMs": 31.807441999997536,
+        "p95BlockMs": 26.6077590000059,
+        "yields": 2068,
+        "allocations": 100,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 70.01939582824707
+      }
+    }
+  ],
+  "libs": []
+}

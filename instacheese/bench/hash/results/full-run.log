@@ -11,3 +11,102 @@ Warning: disabling flag --expose_wasm due to conflicting flags
 
 wrote results/before.json
   done file-bench.mjs {"variant":"after","lib":"js-sha256","size":104857600,"runs":5}
+  done file-bench.mjs {"variant":"after","lib":"js-sha256","size":1073741824,"runs":3}
+Warning: disabling flag --expose_wasm due to conflicting flags
+  done file-bench.mjs {"variant":"after","lib":"js-sha256","size":104857600,"runs":3} --jitless
+  done file-bench.mjs {"variant":"after","lib":"@noble/hashes","size":104857600,"runs":5}
+  done file-bench.mjs {"variant":"after","lib":"@noble/hashes","size":1073741824,"runs":3}
+Warning: disabling flag --expose_wasm due to conflicting flags
+  done file-bench.mjs {"variant":"after","lib":"@noble/hashes","size":104857600,"runs":3} --jitless
+  done file-bench.mjs {"variant":"after","lib":"@stablelib/sha256","size":104857600,"runs":5}
+  done file-bench.mjs {"variant":"after","lib":"@stablelib/sha256","size":1073741824,"runs":3}
+Warning: disabling flag --expose_wasm due to conflicting flags
+  done file-bench.mjs {"variant":"after","lib":"@stablelib/sha256","size":104857600,"runs":3} --jitless
+  done file-bench.mjs {"variant":"after","lib":"fast-sha256","size":104857600,"runs":5}
+  done file-bench.mjs {"variant":"after","lib":"fast-sha256","size":1073741824,"runs":3}
+Warning: disabling flag --expose_wasm due to conflicting flags
+  done file-bench.mjs {"variant":"after","lib":"fast-sha256","size":104857600,"runs":3} --jitless
+  done file-bench.mjs {"variant":"after","lib":"node-forge","size":104857600,"runs":5}
+  done file-bench.mjs {"variant":"after","lib":"node-forge","size":1073741824,"runs":3}
+Warning: disabling flag --expose_wasm due to conflicting flags
+  done file-bench.mjs {"variant":"after","lib":"node-forge","size":104857600,"runs":3} --jitless
+
+| variant | library | engine | size | slicing | MB/s | longest block ms | p95 block ms | yields | reads (allocations) | bytes per read |
+|---|---|---|---|---|---|---|---|---|---|---|
+| after | js-sha256 | V8 (JIT) | 100 MiB | default | 58.7 | 20.3 | 20.3 | 84 | 100 | 1 MiB |
+| after | js-sha256 | V8 (JIT) | 1024 MiB | default | 59.5 | 21.0 | 20.3 | 853 | 1024 | 1 MiB |
+| after | js-sha256 | V8 --jitless | 100 MiB | default | 2.6 | 30.4 | 24.4 | 1615 | 100 | 1 MiB |
+| after | @noble/hashes | V8 (JIT) | 100 MiB | default | 167.7 | 20.2 | 20.2 | 29 | 100 | 1 MiB |
+| after | @noble/hashes | V8 (JIT) | 1024 MiB | default | 166.4 | 20.9 | 20.1 | 305 | 1024 | 1 MiB |
+| after | @noble/hashes | V8 --jitless | 100 MiB | default | 1.5 | 36.4 | 29.7 | 3104 | 100 | 1 MiB |
+| after | @stablelib/sha256 | V8 (JIT) | 100 MiB | default | 121.4 | 20.3 | 20.2 | 40 | 100 | 1 MiB |
+| after | @stablelib/sha256 | V8 (JIT) | 1024 MiB | default | 123.7 | 21.9 | 20.1 | 410 | 1024 | 1 MiB |
+| after | @stablelib/sha256 | V8 --jitless | 100 MiB | default | 2.8 | 28.5 | 24.1 | 1613 | 100 | 1 MiB |
+| after | fast-sha256 | V8 (JIT) | 100 MiB | default | 126.5 | 20.2 | 20.1 | 39 | 100 | 1 MiB |
+| after | fast-sha256 | V8 (JIT) | 1024 MiB | default | 124.0 | 21.8 | 20.1 | 409 | 1024 | 1 MiB |
+| after | fast-sha256 | V8 --jitless | 100 MiB | default | 2.9 | 33.0 | 24.0 | 1603 | 100 | 1 MiB |
+| after | node-forge | V8 (JIT) | 100 MiB | default | 40.0 | 20.9 | 20.4 | 122 | 100 | 1 MiB |
+| after | node-forge | V8 (JIT) | 1024 MiB | default | 40.6 | 22.2 | 20.4 | 1243 | 1024 | 1 MiB |
+| after | node-forge | V8 --jitless | 100 MiB | default | 2.2 | 31.8 | 26.6 | 2068 | 100 | 1 MiB |
+
+wrote results/after.json
+  done throughput.mjs {"lib":"js-sha256","size":67108864,"runs":5}
+Warning: disabling flag --expose_wasm due to conflicting flags
+  done throughput.mjs {"lib":"js-sha256","size":16777216,"runs":5} --jitless
+  done throughput.mjs {"lib":"@noble/hashes","size":67108864,"runs":5}
+Warning: disabling flag --expose_wasm due to conflicting flags
+  done throughput.mjs {"lib":"@noble/hashes","size":16777216,"runs":5} --jitless
+  done throughput.mjs {"lib":"@stablelib/sha256","size":67108864,"runs":5}
+Warning: disabling flag --expose_wasm due to conflicting flags
+  done throughput.mjs {"lib":"@stablelib/sha256","size":16777216,"runs":5} --jitless
+  done throughput.mjs {"lib":"fast-sha256","size":67108864,"runs":5}
+Warning: disabling flag --expose_wasm due to conflicting flags
+  done throughput.mjs {"lib":"fast-sha256","size":16777216,"runs":5} --jitless
+  done throughput.mjs {"lib":"node-forge","size":67108864,"runs":5}
+Warning: disabling flag --expose_wasm due to conflicting flags
+  done throughput.mjs {"lib":"node-forge","size":16777216,"runs":5} --jitless
+  done throughput.mjs {"lib":"@aws-crypto/sha256-js","size":67108864,"runs":5}
+Warning: disabling flag --expose_wasm due to conflicting flags
+  done throughput.mjs {"lib":"@aws-crypto/sha256-js","size":16777216,"runs":5} --jitless
+  done throughput.mjs {"lib":"asmcrypto.js","size":67108864,"runs":5}
+Warning: disabling flag --expose_wasm due to conflicting flags
+  done throughput.mjs {"lib":"asmcrypto.js","size":16777216,"runs":5} --jitless
+  done throughput.mjs {"lib":"crypto-js","size":67108864,"runs":5}
+Warning: disabling flag --expose_wasm due to conflicting flags
+  done throughput.mjs {"lib":"crypto-js","size":16777216,"runs":5} --jitless
+  done throughput.mjs {"lib":"jssha","size":67108864,"runs":5}
+Warning: disabling flag --expose_wasm due to conflicting flags
+  done throughput.mjs {"lib":"jssha","size":16777216,"runs":5} --jitless
+  done throughput.mjs {"lib":"hash.js","size":67108864,"runs":5}
+Warning: disabling flag --expose_wasm due to conflicting flags
+  done throughput.mjs {"lib":"hash.js","size":16777216,"runs":5} --jitless
+  done throughput.mjs {"lib":"node:crypto","size":67108864,"runs":5}
+Warning: disabling flag --expose_wasm due to conflicting flags
+  done throughput.mjs {"lib":"node:crypto","size":16777216,"runs":5} --jitless
+
+| library | engine | MB/s (median) | note |
+|---|---|---|---|
+| js-sha256 | V8 (JIT) | 58.1 |  |
+| js-sha256 | V8 --jitless | 2.1 |  |
+| @noble/hashes | V8 (JIT) | 169.9 |  |
+| @noble/hashes | V8 --jitless | 1.4 |  |
+| @stablelib/sha256 | V8 (JIT) | 127.1 |  |
+| @stablelib/sha256 | V8 --jitless | 2.8 |  |
+| fast-sha256 | V8 (JIT) | 129.3 |  |
+| fast-sha256 | V8 --jitless | 2.9 |  |
+| node-forge | V8 (JIT) | 41.7 |  |
+| node-forge | V8 --jitless | 2.2 |  |
+| @aws-crypto/sha256-js | V8 (JIT) | 78.2 |  |
+| @aws-crypto/sha256-js | V8 --jitless | 2.1 |  |
+| asmcrypto.js | V8 (JIT) | 147.2 |  |
+| asmcrypto.js | V8 --jitless | 3.3 |  |
+| crypto-js | V8 (JIT) | 44.7 |  |
+| crypto-js | V8 --jitless | 2.2 |  |
+| jssha | V8 (JIT) | 35.1 |  |
+| jssha | V8 --jitless | 0.9 |  |
+| hash.js | V8 (JIT) | 26.2 |  |
+| hash.js | V8 --jitless | 1.0 |  |
+| node:crypto | V8 (JIT) | 1274.5 | 24 MiB one-shot (alloc+copy+digest): 36.2 ms |
+| node:crypto | V8 --jitless | 1262.0 | 24 MiB one-shot (alloc+copy+digest): 32.7 ms |
+
+wrote results/libs.json
