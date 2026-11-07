@@ -119,6 +119,8 @@ export default function LibraryScreen() {
   // Queue item events waiting for the next frame, per asset, in order.
   const pendingItemEvents = useRef(new Map<string, ItemEvent[]>());
   const itemFrame = useRef<number | null>(null);
+  const latestSummary = useRef<queue.QueueSummary | null>(null);
+  const summaryFrame = useRef<number | null>(null);
   const { width: windowWidth } = useWindowDimensions();
   const [listWidth, setListWidth] = useState<number | null>(null);
 
@@ -205,10 +207,16 @@ export default function LibraryScreen() {
 
   // The upload queue owns the run (it can also start automatically or in the
   // background), so this screen just observes it. Byte-progress broadcasts
-  // arrive every ~300ms during uploads; skip re-rendering the whole thumbnail
-  // grid for changes this screen doesn't display.
+  // arrive every ~300ms during uploads; skip re-rendering for changes this
+  // screen doesn't display. A batch of files the server already has settles
+  // them back to back, each with its own broadcast, so only the latest
+  // summary is applied, once per frame.
   useEffect(() => {
-    const unSummary = queue.subscribeSummary((next) => {
+    const applySummary = () => {
+      summaryFrame.current = null;
+      const next = latestSummary.current;
+      if (!next) return;
+      latestSummary.current = null;
       setSummary((prev) =>
         prev.state === next.state &&
         prev.reason === next.reason &&
@@ -220,6 +228,10 @@ export default function LibraryScreen() {
           ? prev
           : next
       );
+    };
+    const unSummary = queue.subscribeSummary((next) => {
+      latestSummary.current = next;
+      if (summaryFrame.current == null) summaryFrame.current = requestAnimationFrame(applySummary);
     });
     // Item events come per file per phase, a drain batch marks up to 200
     // 'checking' back to back, and every re-enqueue re-announces each pending
@@ -269,6 +281,8 @@ export default function LibraryScreen() {
       if (tapCountsTimer.current) clearTimeout(tapCountsTimer.current);
       if (itemFrame.current != null) cancelAnimationFrame(itemFrame.current);
       itemFrame.current = null;
+      if (summaryFrame.current != null) cancelAnimationFrame(summaryFrame.current);
+      summaryFrame.current = null;
       pendingItemEvents.current = new Map();
     };
   }, [refreshCountsSoon]);

@@ -1,10 +1,10 @@
 import * as Crypto from 'expo-crypto';
 import { File, FileMode } from 'expo-file-system';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
-import { sha256 } from 'js-sha256';
 import { AppState, Platform } from 'react-native';
 
 import { CLIENT_VERSION, type Session } from './api';
+import { sha256OfReader } from './hash-file';
 import { log } from './log';
 
 // Shared pieces of the /files/* upload protocol, used by both the picker
@@ -207,9 +207,10 @@ function toHex(bytes: Uint8Array): string {
 // Above this size, reading the whole file into memory to hash it risks
 // running out of memory (the native read and the digest each hold their own
 // copy on the Java heap), so fall back to chunked reads + an incremental JS
-// hash.
+// hash. Below it, the native one-shot digest is hundreds of times faster
+// than a JS hash on Hermes: one short synchronous stretch (tens of ms for
+// 24 MB) per file.
 const CHUNKED_HASH_THRESHOLD = 24 * 1024 * 1024;
-const HASH_CHUNK_SIZE = 16 * 1024 * 1024;
 
 export async function sha256OfFile(uri: string, size?: number): Promise<string> {
   if (size !== undefined && size > CHUNKED_HASH_THRESHOLD) {
@@ -217,24 +218,22 @@ export async function sha256OfFile(uri: string, size?: number): Promise<string> 
     // platforms. (The legacy readAsStringAsync `position` is a 32-bit Int on
     // Android, so every chunk past 2 GiB re-read the same bytes and a long
     // 4K video could never hash correctly.)
-    const hash = sha256.create();
     // Read-only: the default (read-write on Android) needs write access a
     // camera-roll original doesn't grant.
     const handle = new File(uri).open(FileMode.ReadOnly);
     try {
-      let read = 0;
-      while (read < size) {
-        const chunk = handle.readBytes(Math.min(HASH_CHUNK_SIZE, size - read));
-        if (chunk.length === 0) throw new StaleFileError('File ended before its expected size');
-        hash.update(chunk);
-        read += chunk.length;
-        // readBytes is synchronous; let the event loop breathe between chunks.
-        await yieldToUI();
-      }
+      // readBytes and the JS hash both run on the JS thread; sha256OfReader
+      // keeps each stretch short (~20–50 ms) and yields between them, where
+      // the old 16 MB chunks froze the UI for seconds each (bench/hash).
+      return await sha256OfReader(
+        (length) => handle.readBytes(length),
+        size,
+        yieldToUI,
+        () => new StaleFileError('File ended before its expected size')
+      );
     } finally {
       handle.close();
     }
-    return hash.hex();
   }
   const bytes = await new File(uri).bytes();
   const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, bytes);

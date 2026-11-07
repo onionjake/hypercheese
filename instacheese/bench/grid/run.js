@@ -3,7 +3,7 @@
 // Backup-tab grid render benchmark. See bench/grid/RESULTS.md for the method.
 //
 //   node bench/grid/run.js                    # current working tree
-//   node bench/grid/run.js --rev HEAD         # library.tsx as of a git revision
+//   node bench/grid/run.js --rev 68288ed      # library.tsx as of a git revision (pre-fix)
 //   node bench/grid/run.js --reps 25 --out bench/grid/results/after.json
 //
 // Mounts src/app/(tabs)/library.tsx with react-dom (production *profiling*
@@ -198,11 +198,13 @@ async function settle() {
   while (quiet < 3) {
     await turn();
     const events = layoutPass();
-    if (prof.sinceCheck > 0 || events > 0 || io.pending > 0) {
-      prof.sinceCheck = 0;
+    const active = prof.sinceCheck > 0 || events > 0;
+    prof.sinceCheck = 0;
+    if (active) {
       quiet = 0;
-    } else if (pendingTimers.size > 0) {
-      await idle(4);
+    } else if (io.pending > 0 || pendingTimers.size > 0) {
+      // Waiting on a fake native call or an app timer: sleep (idle), don't spin.
+      await idle(1);
       quiet = 0;
     } else {
       quiet++;
@@ -341,9 +343,10 @@ async function main() {
 
   await scenario(
     'item event, visible asset',
-    "one emitItem (hashing/uploading) for an asset on screen",
-    async (i) => {
-      queue.emitItem(asItem(supportedVisible[0], i % 2 ? 'hashing' : 'uploading'));
+    "one emitItem ('hashing') for an on-screen photo whose badge changes (none -> pending); a fresh photo each rep",
+    async () => {
+      const fresh = loadedAssets().find((a) => a.supported && a.status === 'none' && cellFor(a.filename));
+      queue.emitItem(asItem(fresh, 'hashing'));
     }
   );
 
@@ -357,11 +360,21 @@ async function main() {
 
   await scenario(
     "'checking' burst x200",
-    "drain marks a batch of 200 'checking': 200 emitItem calls in one synchronous loop",
+    "drain marks a batch of 200 'checking': 200 emitItem calls in one synchronous loop (rows already pending, as after Back up)",
     async () => {
       const start = Math.max(0, visibleTop - 60);
       const batch = loaded.slice(start, start + 200);
       batch.forEach((a) => queue.emitItem(asItem(a, 'checking')));
+    }
+  );
+
+  await scenario(
+    'burst x200, all rows change',
+    "stress variant: 200 back-to-back events that all change a badge (alternately 'failed' and 'checking')",
+    async (i) => {
+      const start = Math.max(0, visibleTop - 60);
+      const batch = loaded.slice(start, start + 200);
+      batch.forEach((a) => queue.emitItem(asItem(a, i % 2 ? 'checking' : 'failed', { error: i % 2 ? null : 'boom' })));
     }
   );
 
@@ -380,20 +393,23 @@ async function main() {
   let fileIdx = 0;
   await scenario(
     'one file upload cycle',
-    'setCurrent+setItemStatus for hashing and uploading, 2 progress ticks, settle(done) + summary, then the 500ms counts debounce',
+    'setCurrent+setItemStatus for hashing and uploading, 2 progress ticks, settle(done) + summary (steps >1 frame apart), then the 500ms counts debounce',
     async () => {
       const a = supportedVisible[(fileIdx++ % (supportedVisible.length - 2)) + 1];
       const base = queue.getSummary();
       const cur = (phase) => ({ key: `asset:${a.id}`, filename: a.filename, phase, bytesSent: 0, bytesTotal: 1000 });
+      // Phases are spaced 20ms apart (more than a frame): hashing and
+      // uploading a real photo take far longer than that, so frame
+      // coalescing can't merge them and isn't credited for it here.
       for (const phase of ['hashing', 'uploading']) {
         queue.broadcastSummary({ ...base, current: cur(phase) });
-        await turn();
+        await hop(); // setItemStatus's UPDATE
         queue.emitItem(asItem(a, phase));
-        await turn();
+        await idle(20);
       }
       for (let t = 0; t < 2; t++) {
         queue.broadcastSummary({ ...queue.getSummary(), current: { ...cur('uploading'), bytesSent: 300 * (t + 1) } });
-        await turn();
+        await idle(20);
       }
       queue.emitItem(asItem(a, 'done'));
       queue.broadcastSummary({

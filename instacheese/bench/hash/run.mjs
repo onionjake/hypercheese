@@ -46,7 +46,7 @@ const ALL_LIBS = [
 ];
 const results = { file: [], libs: [] };
 
-// Case list: [variant, lib, size, runs, jitless]
+// Case list: [variant, lib, size, runs, jitless, slicing?]
 const fileCases = [];
 if (phase === 'all' || phase === 'before') {
   if (quick) fileCases.push(['before', 'js-sha256', 40 * MiB, 1, false], ['before', 'js-sha256', 40 * MiB, 1, true]);
@@ -98,12 +98,12 @@ const slicingLabel = (r) =>
       : 'default';
 const engine = (r) => (r.jitless ? 'V8 --jitless' : 'V8 (JIT)');
 if (results.file.length) {
-  console.log('\n| variant | library | engine | size | slicing | MB/s | longest block ms | p95 block ms | yields | read size | peak ArrayBuffers MiB |');
+  console.log('\n| variant | library | engine | size | slicing | MB/s | longest block ms | p95 block ms | yields | reads (allocations) | bytes per read |');
   console.log('|---|---|---|---|---|---|---|---|---|---|---|');
   for (const r of results.file) {
     const m = r.median;
     console.log(
-      `| ${r.variant} | ${r.lib} | ${engine(r)} | ${r.size / MiB} MiB | ${slicingLabel(r)} | ${f1(m.mbPerSec)} | ${f1(m.maxBlockMs)} | ${f1(m.p95BlockMs)} | ${m.yields} | ${m.maxAllocationBytes / MiB} MiB | ${f1(m.peakArrayBuffersMiB)} |`
+      `| ${r.variant} | ${r.lib} | ${engine(r)} | ${r.size / MiB} MiB | ${slicingLabel(r)} | ${f1(m.mbPerSec)} | ${f1(m.maxBlockMs)} | ${f1(m.p95BlockMs)} | ${m.yields} | ${m.allocations} | ${m.maxAllocationBytes / MiB} MiB |`
     );
   }
 }

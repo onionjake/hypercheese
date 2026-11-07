@@ -1,0 +1,3 @@
+  done file-bench.mjs {"variant":"before","lib":"js-sha256","size":104857600,"runs":5}
+  done file-bench.mjs {"variant":"before","lib":"js-sha256","size":1073741824,"runs":3}
+Warning: disabling flag --expose_wasm due to conflicting flags

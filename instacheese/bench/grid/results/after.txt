@@ -1,0 +1,22 @@
+
+after (working tree): 1080 assets loaded, 132 cells mounted (44 rows), scrolled to row 180
+
+noop (harness floor)         busy     0.01ms  render        0ms  commits   0  screen   0  rows    0  cells     0  icons    0  host upd     0  img mount/unmount 0/0
+item event, visible asset    busy     3.69ms  render     0.88ms  commits   2  screen   1  rows   44  cells     1  icons    1  host upd   123  img mount/unmount 0/0
+item event, asset not loaded busy     0.47ms  render        0ms  commits   0  screen   0  rows    0  cells     0  icons    0  host upd     0  img mount/unmount 0/0
+'checking' burst x200        busy     0.68ms  render        0ms  commits   0  screen   0  rows    0  cells     0  icons    0  host upd     0  img mount/unmount 0/0
+burst x200, all rows change  busy     6.17ms  render     2.37ms  commits   2  screen   1  rows   44  cells   102  icons  102  host upd   544  img mount/unmount 0/0
+summary change only          busy     0.63ms  render     0.15ms  commits   1  screen   1  rows    0  cells     0  icons    0  host upd    30  img mount/unmount 0/0
+one file upload cycle        busy    13.41ms  render     2.34ms  commits   7  screen   6  rows   88  cells     2  icons    2  host upd   313  img mount/unmount 0/0
+tap (select toggle)          busy     6.26ms  render     1.11ms  commits   3  screen   2  rows   44  cells     1  icons    1  host upd   159  img mount/unmount 0/0
+won't upload (long-press)    busy     6.28ms  render     1.06ms  commits   3  screen   2  rows   44  cells     1  icons    1  host upd   155  img mount/unmount 0/0
+drain batch of 200 (all exist) busy   105.68ms  render    39.47ms  commits 130  screen 120  rows 1804  cells   204  icons  204  host upd  8219  img mount/unmount 0/0
+enqueue re-trigger, 1000 items busy     0.85ms  render        0ms  commits   0  screen   0  rows    0  cells     0  icons    0  host upd     0  img mount/unmount 0/0
+Back up 16 selected (top)    busy     3.04ms  render     1.16ms  commits   3  screen   2  rows   19  cells    57  icons   25  host upd   263  img mount/unmount 0/0
+
+React Compiler on app code:
+  CompileError  src/app/(tabs)/library.tsx:100  — React Compiler has skipped optimizing this component because one or more React ESLint rules were disabled
+  CompileSuccess src/components/library-cell.tsx:14 LibraryCell 
+  CompileSuccess src/lib/theme.ts:34 usePalette 
+
+wrote bench/grid/results/after.json

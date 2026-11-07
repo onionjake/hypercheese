@@ -31,13 +31,14 @@ export interface HashSlicing {
 }
 
 // js-sha256 runs ~2.6 MB/s in an interpreter on the bench machine (node
-// --jitless; bench/hash), so a 32 KiB slice is ~12 ms there and a 1 MiB read
-// a few ms of copying: the longest stretch stays around 40 ms. Other pure-JS
-// libraries are no faster without a JIT (@noble/hashes is ~1.7x slower).
+// --jitless, standing in for Hermes; bench/hash), so a 16 KiB slice is ~6 ms
+// there and the longest stretch ~31 ms — room for a phone twice as slow to
+// stay under ~50 ms. Other pure-JS SHA-256 libraries are no faster without a
+// JIT (@noble/hashes is ~1.7x slower), so the library stays.
 export const DEFAULT_HASH_SLICING: HashSlicing = {
   readSize: 1024 * 1024,
-  sliceSize: 32 * 1024,
-  budgetMs: 25,
+  sliceSize: 16 * 1024,
+  budgetMs: 20,
 };
 
 export interface Sha256OfReaderOptions {
