@@ -16,7 +16,6 @@ import { Hash as FastSha256 } from 'fast-sha256';
 import { sha256 as jsSha256 } from 'js-sha256';
 import { useEffect, useRef, useState } from 'react';
 import { Platform, ScrollView, Text } from 'react-native';
-import ReactNativeBlobUtil from 'react-native-blob-util';
 
 import { sha256OfReader, type IncrementalHash } from '@/lib/hash-file';
 import { log } from '@/lib/log';
@@ -32,24 +31,8 @@ function hex(u8: Uint8Array): string {
   return s;
 }
 
-// Native candidates are loaded defensively: a native-module failure should
-// show up as a result line, not kill the whole screen.
-let quickCrypto: typeof import('react-native-quick-crypto') | null = null;
-let quickCryptoError = '';
-try {
-  quickCrypto = require('react-native-quick-crypto');
-} catch (err) {
-  quickCryptoError = String(err);
-}
-const QC = 'quick-crypto (native JSI)';
-
 // Every library behind the IncrementalHash interface sha256OfReader takes.
 const LIBS: Record<string, () => IncrementalHash> = {
-  [QC]: () => {
-    // Synchronous JSI update/digest on the JS thread (OpenSSL).
-    const h = quickCrypto!.createHash('sha256');
-    return { update: (d) => h.update(d), hex: () => h.digest('hex') };
-  },
   '@noble/hashes': () => {
     const h = nobleSha256.create();
     return { update: (d) => h.update(d), hex: () => bytesToHex(h.digest()) };
@@ -69,8 +52,6 @@ const LIBS: Record<string, () => IncrementalHash> = {
   },
 };
 
-const ACTIVE_LIBS = Object.entries(LIBS).filter(([name]) => name !== QC || quickCrypto);
-
 const median = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b);
   const m = s.length >> 1;
@@ -82,6 +63,36 @@ const pct = (xs: number[], p: number) => {
 };
 const r1 = (x: number) => Math.round(x * 10) / 10;
 const r2 = (x: number) => Math.round(x * 100) / 100;
+
+// Test data: a 1 MiB + 7 byte xorshift pattern (as bench/hash/common.mjs),
+// repeated. expo-crypto's getRandomBytes caps at 1024 bytes.
+function xorshiftBytes(n: number, seed: number): Uint8Array<ArrayBuffer> {
+  const o = new Uint8Array(n);
+  let x = seed >>> 0 || 1;
+  for (let i = 0; i < n; i++) {
+    x ^= x << 13;
+    x >>>= 0;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    x >>>= 0;
+    o[i] = x & 0xff;
+  }
+  return o;
+}
+let pattern: Uint8Array<ArrayBuffer> | null = null;
+function patterned(n: number, offset = 0): Uint8Array<ArrayBuffer> {
+  pattern ??= xorshiftBytes(MiB + 7, 0x9e3779b9);
+  const out = new Uint8Array(n);
+  let pos = 0;
+  let p = offset % pattern.length;
+  while (pos < n) {
+    const k = Math.min(pattern.length - p, n - pos);
+    out.set(pattern.subarray(p, p + k), pos);
+    pos += k;
+    p = 0;
+  }
+  return out;
+}
 
 const ABC = new Uint8Array([0x61, 0x62, 0x63]) as Uint8Array<ArrayBuffer>;
 const ABC_HEX = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
@@ -106,7 +117,7 @@ export default function HashBench() {
     const fileMiB = Number(params.file ?? 128);
     const runs = Number(params.runs ?? 5);
     const fileRuns = Number(params.fileRuns ?? 3);
-    const only = new Set((params.only ?? 'env,check,native,read,reader,blob,libs').split(','));
+    const only = new Set((params.only ?? 'env,check,native,read,reader,libs').split(','));
 
     const out = (text: string, record?: object) => {
       setLines((ls) => [...ls, text]);
@@ -139,19 +150,18 @@ export default function HashBench() {
           },
           webassembly: typeof (globalThis as { WebAssembly?: unknown }).WebAssembly,
           params: { memMiB, fileMiB, runs, fileRuns, only: [...only] },
-          quickCrypto: quickCrypto ? 'loaded' : `failed: ${quickCryptoError}`,
         };
         out(`env ${JSON.stringify(env)}`, env);
 
-        // In-memory test data: native random bytes (fast to make).
-        const data = Crypto.getRandomBytes(memMiB * MiB) as Uint8Array<ArrayBuffer>;
+        // In-memory test data.
+        const data = patterned(memMiB * MiB);
         const nativeHex = hex(
           new Uint8Array(await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, data))
         );
 
         // --- Correctness ----------------------------------------------------
         if (only.has('check')) {
-          for (const [name, make] of ACTIVE_LIBS) {
+          for (const [name, make] of Object.entries(LIBS)) {
             const oneShot = (d: Uint8Array) => {
               const h = make();
               h.update(d);
@@ -195,7 +205,7 @@ export default function HashBench() {
         // --- Native ceiling: expo-crypto one-shot digest ---------------------
         if (only.has('native')) {
           for (const sizeMiB of [16, 64]) {
-            const buf = sizeMiB === memMiB ? data : (Crypto.getRandomBytes(sizeMiB * MiB) as Uint8Array<ArrayBuffer>);
+            const buf = sizeMiB === memMiB ? data : patterned(sizeMiB * MiB);
             const ms: number[] = [];
             for (let i = 0; i < runs; i++) {
               const t = now();
@@ -216,7 +226,6 @@ export default function HashBench() {
         }
 
         // --- Real file: create, then readBytes alone, then the shipped loop --
-        let fileHex = '';
         const file = new File(Paths.cache, 'hash-bench.bin');
         const fileSize = fileMiB * MiB;
         if (only.has('read') || only.has('reader')) {
@@ -226,7 +235,7 @@ export default function HashBench() {
             const t = now();
             const w = file.open(FileMode.ReadWrite);
             try {
-              for (let i = 0; i < fileMiB; i++) w.writeBytes(Crypto.getRandomBytes(MiB));
+              for (let i = 0; i < fileMiB; i++) w.writeBytes(patterned(MiB, i * MiB));
             } finally {
               w.close();
             }
@@ -273,7 +282,7 @@ export default function HashBench() {
 
         if (only.has('reader')) {
           const digests: Record<string, string> = {};
-          for (const name of ['@noble/hashes', 'js-sha256', ...(quickCrypto ? [QC] : [])]) {
+          for (const name of ['@noble/hashes', 'js-sha256']) {
             const per: {
               ms: number;
               maxBlock: number;
@@ -335,64 +344,16 @@ export default function HashBench() {
               res
             );
           }
-          const agree =
-            digests['@noble/hashes'] === digests['js-sha256'] &&
-            digests['js-sha256'] === digests[QC];
-          out(`reader digests agree: ${agree}`, { kind: 'reader-agree', ok: agree, digests });
-          fileHex = digests['@noble/hashes'];
-        }
-
-        // --- react-native-blob-util fs.hash: native, off the JS thread -------
-        if (only.has('blob')) {
-          const path = decodeURIComponent(file.uri.replace(/^file:\/\//, ''));
-          const ms: number[] = [];
-          const gaps: number[] = [];
-          let digest = '';
-          for (let i = 0; i < fileRuns; i++) {
-            // Probe: how long the JS thread goes without running a timer
-            // while the native hash runs (should stay ~1 frame).
-            let done = false;
-            let last = now();
-            let maxGap = 0;
-            const probe = (async () => {
-              while (!done) {
-                await sleep0();
-                const t = now();
-                maxGap = Math.max(maxGap, t - last);
-                last = t;
-              }
-            })();
-            const t = now();
-            try {
-              digest = await ReactNativeBlobUtil.fs.hash(path, 'sha256');
-            } finally {
-              done = true;
-            }
-            ms.push(now() - t);
-            await probe;
-            gaps.push(maxGap);
-            await sleep0();
-          }
-          const res = {
-            kind: 'blob',
-            lib: 'react-native-blob-util fs.hash',
-            fileMiB,
-            ms: ms.map(r1),
-            mbps: r1(fileSize / 1e6 / (median(ms) / 1000)),
-            maxJsGapMs: gaps.map(r1),
-            digest,
-            matchesReader: fileHex ? digest === fileHex : null,
-          };
           out(
-            `blob-util fs.hash ${fileMiB} MiB: ${res.mbps} MB/s (median ${r1(median(ms))} ms), JS max gap ${res.maxJsGapMs.join('/')} ms, matches=${res.matchesReader}`,
-            res
+            `reader digests agree: ${digests['@noble/hashes'] === digests['js-sha256']}`,
+            { kind: 'reader-agree', ok: digests['@noble/hashes'] === digests['js-sha256'] }
           );
         }
 
         // --- Pure-JS throughput, in memory, 32 KiB updates -----------------
         if (only.has('libs')) {
           const step = 32 * 1024;
-          for (const [name, make] of ACTIVE_LIBS) {
+          for (const [name, make] of Object.entries(LIBS)) {
             // Warm-up (1 MiB) so lazy init/tables aren't timed.
             {
               const h = make();

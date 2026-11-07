@@ -6,7 +6,8 @@ an Android device. Results: `../RESULTS.md` ("Android emulator, Hermes").
 The app does **not** ship this screen. To rerun it, make a throwaway bench
 build on a branch (never `master`: a master push publishes a release):
 
-1. Copy `hash-bench.tsx` to `src/app/hash-bench.tsx`.
+1. Copy `hash-bench.tsx` to `src/app/hash-bench.tsx` (drop its first
+   `// @ts-nocheck` line).
 2. In `src/app/_layout.tsx`, skip the sign-in redirect for this route, at
    the top of the redirect effect (after the `loading` check):
 
@@ -17,9 +18,7 @@ build on a branch (never `master`: a master push publishes a release):
 3. Add the bench-only libraries to the app (for this build only):
 
    ```bash
-   npm install --save-exact @stablelib/sha256@2.0.1 fast-sha256@1.3.0 asmcrypto.js@2.3.2 \
-     react-native-quick-crypto@1.1.9 react-native-nitro-modules@0.37.2 \
-     react-native-quick-base64@3.0.1 react-native-blob-util@0.25.1
+   npm install --save-exact @stablelib/sha256@2.0.1 fast-sha256@1.3.0 asmcrypto.js@2.3.2
    ```
 
    (`js-sha256`, `@noble/hashes`, `expo-crypto` and `expo-file-system` are
@@ -33,7 +32,7 @@ build on a branch (never `master`: a master push publishes a release):
 
    ```bash
    adb shell am start -a android.intent.action.VIEW -d 'instacheese://hash-bench'
-   # optional query: ?mem=16&file=128&runs=5&fileRuns=3&only=env,check,native,read,reader,blob,libs
+   # optional query: ?mem=16&file=128&runs=5&fileRuns=3&only=env,check,native,read,reader,libs
    adb logcat -d -s ReactNativeJS | grep HASHBENCH
    ```
 
@@ -56,9 +55,6 @@ What it measures:
   20 ms budget, `setTimeout(0)` yields like the app's foreground
   `yieldToUI`) on a real file in the cache directory, per library. "Block"
   is the time between yields: the longest uninterrupted JS-thread stretch.
-- `blob`: `react-native-blob-util` `fs.hash(path, 'sha256')` (native,
-  off the JS thread) on the same file, with a timer probe that records the
-  longest gap the JS thread saw meanwhile.
 - `libs`: in-memory throughput, 32 KiB updates, median of 5 runs.
 
 ## Hermes CLI (`hermes-cli/`)
