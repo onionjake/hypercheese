@@ -1,5 +1,5 @@
 import { Directory, File, Paths } from 'expo-file-system';
-import { MediaSubtype, MediaType, Asset as PhotoKitAsset } from 'expo-media-library';
+import { AssetUriVersion, MediaSubtype, MediaType, Asset as PhotoKitAsset } from 'expo-media-library';
 import * as MediaLibrary from 'expo-media-library/legacy';
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
@@ -164,7 +164,10 @@ export async function slowMotionOriginal(assetId: string): Promise<SlowMotionLoo
     return { kind: 'not-slow-motion' };
   }
   try {
-    const uri = await asset.getUri();
+    // ORIGINAL explicitly: since expo-media-library 58, getUri() defaults to
+    // the CURRENT version, which for a slow-motion video is the time-ramped
+    // composition — exported as a fresh slowMoVideo-*.mov re-encode.
+    const uri = await asset.getUri({ version: AssetUriVersion.ORIGINAL });
     const fileUri = uri.startsWith('file://') ? uri : `file://${uri}`;
     // Should not happen with the original version requested; if it does,
     // it's an unstable re-encode, not something to back up.

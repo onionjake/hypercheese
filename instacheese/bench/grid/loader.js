@@ -20,6 +20,8 @@ const compilerEvents = [];
 const ALIASES = {
   'react-native': path.join(MOCKS, 'react-native.js'),
   'react-native/src/private/featureflags/ReactNativeFeatureFlags': path.join(MOCKS, 'feature-flags.js'),
+  // @react-native/virtualized-lists 0.88+ reads the flags through here.
+  'react-native/react-private-interface': path.join(MOCKS, 'react-private-interface.js'),
   'expo-image': path.join(MOCKS, 'expo-image.js'),
   '@expo/vector-icons': path.join(MOCKS, 'vector-icons.js'),
   'react-native-safe-area-context': path.join(MOCKS, 'safe-area.js'),

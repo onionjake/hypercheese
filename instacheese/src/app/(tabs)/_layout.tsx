@@ -17,6 +17,9 @@ export default function TabsLayout() {
     return startAutoRetry(session);
   }, [session, user?.can_write]);
 
+  // RN 0.88's strict types widen the tab bar's icon `color` to ColorValue
+  // (null | number | ...); it is always the tint string set here, and
+  // @expo/vector-icons still types `color` as a string.
   return (
     <Tabs
       screenOptions={{
@@ -30,7 +33,7 @@ export default function TabsLayout() {
         options={{
           title: 'Feed',
           tabBarIcon: ({ color, focused, size }) => (
-            <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />
+            <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color as string} />
           ),
         }}
       />
@@ -42,7 +45,7 @@ export default function TabsLayout() {
             <Ionicons
               name={focused ? 'add-circle' : 'add-circle-outline'}
               size={size + 6}
-              color={color}
+              color={color as string}
             />
           ),
         }}
@@ -52,7 +55,7 @@ export default function TabsLayout() {
         options={{
           title: 'Backup',
           tabBarIcon: ({ color, focused, size }) => (
-            <Ionicons name={focused ? 'images' : 'images-outline'} size={size} color={color} />
+            <Ionicons name={focused ? 'images' : 'images-outline'} size={size} color={color as string} />
           ),
         }}
       />
@@ -64,7 +67,7 @@ export default function TabsLayout() {
             <Ionicons
               name={focused ? 'cloud-upload' : 'cloud-upload-outline'}
               size={size}
-              color={color}
+              color={color as string}
             />
           ),
         }}
@@ -74,7 +77,7 @@ export default function TabsLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ color, focused, size }) => (
-            <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color} />
+            <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color as string} />
           ),
         }}
       />

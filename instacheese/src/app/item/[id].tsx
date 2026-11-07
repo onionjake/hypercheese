@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { useHeaderHeight } from 'expo-router/build/react-navigation/elements';
+import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {

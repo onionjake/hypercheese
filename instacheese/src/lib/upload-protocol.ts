@@ -222,9 +222,10 @@ export async function sha256OfFile(uri: string, size?: number): Promise<string> 
     // camera-roll original doesn't grant.
     const handle = new File(uri).open(FileMode.ReadOnly);
     try {
-      // readBytes and the JS hash both run on the JS thread; sha256OfReader
-      // keeps each stretch short (~20–50 ms) and yields between them, where
-      // the old 16 MB chunks froze the UI for seconds each (bench/hash).
+      // readBytes is async (off the JS thread) since SDK 58; the JS hash
+      // runs on the JS thread, and sha256OfReader keeps each stretch short
+      // (~20–50 ms) and yields between them, where the old 16 MB chunks
+      // froze the UI for seconds each (bench/hash).
       return await sha256OfReader(
         (length) => handle.readBytes(length),
         size,

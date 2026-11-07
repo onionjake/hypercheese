@@ -246,7 +246,7 @@ export default function FeedScreen() {
               </Text>
             )
           }
-          ListFooterComponent={loadingMore ? <ActivityIndicator style={{ margin: 16 }} /> : null}
+          ListFooterComponent={loadingMore ? <ActivityIndicator style={{ margin: 16 }} /> : undefined}
         />
       ) : null}
     </SafeAreaView>

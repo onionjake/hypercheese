@@ -1,21 +1,22 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 
-// Time-sliced SHA-256 of a big file read through a synchronous reader.
+// Time-sliced SHA-256 of a big file read in chunks.
 // Kept free of Expo/React Native imports so bench/hash/ can run this exact
 // code under Node and check it against node:crypto (the server compares the
 // SHA-256 we send: a wrong hash fails every big upload).
 //
-// expo-file-system's FileHandle.readBytes is a synchronous JSI call on the JS
-// thread that allocates a fresh buffer per call (there is no read-into-buffer
-// API), and the hash itself is pure JS (Hermes has no JIT; no native
+// expo-file-system's FileHandle.readBytes allocates a fresh buffer per call
+// (there is no read-into-buffer API); since SDK 58 it is async (the read runs
+// off the JS thread; readBytesSync is the old blocking call). The hash itself
+// is pure JS (Hermes has no JIT; no native
 // streaming SHA-256 is available — expo-crypto only digests a whole buffer).
 // The old loop read and hashed 16 MB at a time between yields, freezing the
 // JS thread for seconds per chunk on a phone. Now each uninterrupted stretch
 // is short: modest reads, hashed in small slices, yielding once the stretch
 // has run for budgetMs. The budget is measured on the device, so a slower
 // phone simply yields more often; the longest stretch is about budgetMs + one
-// slice + one read. See bench/hash/RESULTS.md.
+// slice (+ one read, for a synchronous reader). See bench/hash/RESULTS.md.
 
 export interface IncrementalHash {
   update(data: Uint8Array): unknown;
@@ -60,8 +61,10 @@ function nobleSha256(): IncrementalHash {
 }
 
 export async function sha256OfReader(
-  // Synchronously returns up to `length` bytes, or none at end of file.
-  readBytes: (length: number) => Uint8Array,
+  // Returns up to `length` bytes, or none at end of file. The app passes
+  // expo-file-system's FileHandle.readBytes, which is async (off the JS
+  // thread) since SDK 58; the benchmarks pass a synchronous reader.
+  readBytes: (length: number) => Uint8Array | Promise<Uint8Array>,
   // Hash exactly this many bytes. A plain number: exact far past 4 GiB.
   size: number,
   // Lets the event loop run. May resolve at once (in an Android background
@@ -77,7 +80,7 @@ export async function sha256OfReader(
   let read = 0;
   let stretchStart = now();
   while (read < size) {
-    const chunk = readBytes(Math.min(readSize, size - read));
+    const chunk = await readBytes(Math.min(readSize, size - read));
     if (chunk.length === 0) throw endedEarly();
     // Never hash past `size`, even if a reader hands back extra bytes.
     const length = Math.min(chunk.length, size - read);
