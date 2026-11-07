@@ -23,7 +23,6 @@ function RootNavigator() {
   useEffect(() => {
     if (status === 'loading') return;
     SplashScreen.hideAsync();
-    if ((segments[0] as string) === 'digest-bench') return; // TEMPORARY bench build
     const onLogin = segments[0] === 'login';
     if (status === 'signedOut' && !onLogin) {
       // A forced sign-out (startup 401) can land while an item or the queue
