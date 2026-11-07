@@ -1,0 +1,566 @@
+{
+  "when": "2026-11-07T19:19:19.336Z",
+  "node": "v22.23.4",
+  "file": [
+    {
+      "variant": "before",
+      "lib": "js-sha256",
+      "size": 41943040,
+      "runs": [
+        {
+          "seconds": 0.679587712,
+          "mbPerSec": 58.859216100717255,
+          "maxBlockMs": 275.16319100000004,
+          "p95BlockMs": 275.16319100000004,
+          "yields": 3,
+          "allocations": 3,
+          "maxAllocationBytes": 16777216,
+          "peakArrayBuffersMiB": 37.019399642944336
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 58.859216100717255,
+        "seconds": 0.679587712,
+        "maxBlockMs": 275.16319100000004,
+        "p95BlockMs": 275.16319100000004,
+        "yields": 3,
+        "allocations": 3,
+        "maxAllocationBytes": 16777216,
+        "peakArrayBuffersMiB": 37.019399642944336
+      }
+    },
+    {
+      "variant": "before",
+      "lib": "js-sha256",
+      "size": 41943040,
+      "runs": [
+        {
+          "seconds": 15.037524553999999,
+          "mbPerSec": 2.6600122816996468,
+          "maxBlockMs": 5988.314129,
+          "p95BlockMs": 5988.314129,
+          "yields": 3,
+          "allocations": 3,
+          "maxAllocationBytes": 16777216,
+          "peakArrayBuffersMiB": 29.01939582824707
+        }
+      ],
+      "jitless": true,
+      "median": {
+        "mbPerSec": 2.6600122816996468,
+        "seconds": 15.037524553999999,
+        "maxBlockMs": 5988.314129,
+        "p95BlockMs": 5988.314129,
+        "yields": 3,
+        "allocations": 3,
+        "maxAllocationBytes": 16777216,
+        "peakArrayBuffersMiB": 29.01939582824707
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "js-sha256",
+      "size": 41943040,
+      "runs": [
+        {
+          "seconds": 0.6936522700000001,
+          "mbPerSec": 57.66578115573672,
+          "maxBlockMs": 20.412211999999982,
+          "p95BlockMs": 20.316474000000085,
+          "yields": 34,
+          "allocations": 40,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019399642944336
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 57.66578115573672,
+        "seconds": 0.6936522700000001,
+        "maxBlockMs": 20.412211999999982,
+        "p95BlockMs": 20.316474000000085,
+        "yields": 34,
+        "allocations": 40,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 37.019399642944336
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "js-sha256",
+      "size": 8388608,
+      "runs": [
+        {
+          "seconds": 2.98484265,
+          "mbPerSec": 2.680208285016297,
+          "maxBlockMs": 26.670335999999907,
+          "p95BlockMs": 24.331927000000178,
+          "yields": 129,
+          "allocations": 8,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 13.01939582824707
+        }
+      ],
+      "jitless": true,
+      "median": {
+        "mbPerSec": 2.680208285016297,
+        "seconds": 2.98484265,
+        "maxBlockMs": 26.670335999999907,
+        "p95BlockMs": 24.331927000000178,
+        "yields": 129,
+        "allocations": 8,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 13.01939582824707
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "@noble/hashes",
+      "size": 41943040,
+      "runs": [
+        {
+          "seconds": 0.25902857300000004,
+          "mbPerSec": 154.423118410184,
+          "maxBlockMs": 20.392754999999994,
+          "p95BlockMs": 20.392754999999994,
+          "yields": 12,
+          "allocations": 40,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 37.019460678100586
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 154.423118410184,
+        "seconds": 0.25902857300000004,
+        "maxBlockMs": 20.392754999999994,
+        "p95BlockMs": 20.392754999999994,
+        "yields": 12,
+        "allocations": 40,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 37.019460678100586
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "@noble/hashes",
+      "size": 8388608,
+      "runs": [
+        {
+          "seconds": 5.311522946999999,
+          "mbPerSec": 1.5061593595333103,
+          "maxBlockMs": 30.81094999999982,
+          "p95BlockMs": 29.62764900000002,
+          "yields": 244,
+          "allocations": 8,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 13.019487380981445
+        }
+      ],
+      "jitless": true,
+      "median": {
+        "mbPerSec": 1.5061593595333103,
+        "seconds": 5.311522946999999,
+        "maxBlockMs": 30.81094999999982,
+        "p95BlockMs": 29.62764900000002,
+        "yields": 244,
+        "allocations": 8,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 13.019487380981445
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "@stablelib/sha256",
+      "size": 41943040,
+      "runs": [
+        {
+          "seconds": 0.343549294,
+          "mbPerSec": 116.43161752502394,
+          "maxBlockMs": 20.303843999999998,
+          "p95BlockMs": 20.303843999999998,
+          "yields": 16,
+          "allocations": 40,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 36.019765853881836
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 116.43161752502394,
+        "seconds": 0.343549294,
+        "maxBlockMs": 20.303843999999998,
+        "p95BlockMs": 20.303843999999998,
+        "yields": 16,
+        "allocations": 40,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 36.019765853881836
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "@stablelib/sha256",
+      "size": 8388608,
+      "runs": [
+        {
+          "seconds": 2.7246428469999997,
+          "mbPerSec": 2.9361646458758788,
+          "maxBlockMs": 25.371309999999994,
+          "p95BlockMs": 24.31723000000011,
+          "yields": 125,
+          "allocations": 8,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 13.019792556762695
+        }
+      ],
+      "jitless": true,
+      "median": {
+        "mbPerSec": 2.9361646458758788,
+        "seconds": 2.7246428469999997,
+        "maxBlockMs": 25.371309999999994,
+        "p95BlockMs": 24.31723000000011,
+        "yields": 125,
+        "allocations": 8,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 13.019792556762695
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "fast-sha256",
+      "size": 41943040,
+      "runs": [
+        {
+          "seconds": 0.329998657,
+          "mbPerSec": 121.21261451073119,
+          "maxBlockMs": 20.374955999999997,
+          "p95BlockMs": 20.374955999999997,
+          "yields": 16,
+          "allocations": 40,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 35.019765853881836
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 121.21261451073119,
+        "seconds": 0.329998657,
+        "maxBlockMs": 20.374955999999997,
+        "p95BlockMs": 20.374955999999997,
+        "yields": 16,
+        "allocations": 40,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 35.019765853881836
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "fast-sha256",
+      "size": 8388608,
+      "runs": [
+        {
+          "seconds": 2.7703582879999997,
+          "mbPerSec": 2.8877131288947564,
+          "maxBlockMs": 27.281082999999967,
+          "p95BlockMs": 24.863962000000015,
+          "yields": 125,
+          "allocations": 8,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 13.019792556762695
+        }
+      ],
+      "jitless": true,
+      "median": {
+        "mbPerSec": 2.8877131288947564,
+        "seconds": 2.7703582879999997,
+        "maxBlockMs": 27.281082999999967,
+        "p95BlockMs": 24.863962000000015,
+        "yields": 125,
+        "allocations": 8,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 13.019792556762695
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "node-forge",
+      "size": 41943040,
+      "runs": [
+        {
+          "seconds": 1.047129025,
+          "mbPerSec": 38.19968604155538,
+          "maxBlockMs": 20.38483999999994,
+          "p95BlockMs": 20.350292999999965,
+          "yields": 51,
+          "allocations": 40,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 29.019399642944336
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 38.19968604155538,
+        "seconds": 1.047129025,
+        "maxBlockMs": 20.38483999999994,
+        "p95BlockMs": 20.350292999999965,
+        "yields": 51,
+        "allocations": 40,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 29.019399642944336
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "node-forge",
+      "size": 8388608,
+      "runs": [
+        {
+          "seconds": 3.4740738680000005,
+          "mbPerSec": 2.3027719916057925,
+          "maxBlockMs": 29.601326999999856,
+          "p95BlockMs": 26.526981999999975,
+          "yields": 147,
+          "allocations": 8,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 13.019426345825195
+        }
+      ],
+      "jitless": true,
+      "median": {
+        "mbPerSec": 2.3027719916057925,
+        "seconds": 3.4740738680000005,
+        "maxBlockMs": 29.601326999999856,
+        "p95BlockMs": 26.526981999999975,
+        "yields": 147,
+        "allocations": 8,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 13.019426345825195
+      }
+    }
+  ],
+  "libs": [
+    {
+      "lib": "js-sha256",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": false,
+      "mbPerSec": 49.61383505605179,
+      "rates": [
+        49.61383505605179
+      ]
+    },
+    {
+      "lib": "js-sha256",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": true,
+      "mbPerSec": 2.660118159801841,
+      "rates": [
+        2.660118159801841
+      ]
+    },
+    {
+      "lib": "@noble/hashes",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": false,
+      "mbPerSec": 120.34696149345523,
+      "rates": [
+        120.34696149345523
+      ]
+    },
+    {
+      "lib": "@noble/hashes",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": true,
+      "mbPerSec": 1.4833876450440167,
+      "rates": [
+        1.4833876450440167
+      ]
+    },
+    {
+      "lib": "@stablelib/sha256",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": false,
+      "mbPerSec": 83.81608956285594,
+      "rates": [
+        83.81608956285594
+      ]
+    },
+    {
+      "lib": "@stablelib/sha256",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": true,
+      "mbPerSec": 2.9130406086942258,
+      "rates": [
+        2.9130406086942258
+      ]
+    },
+    {
+      "lib": "fast-sha256",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": false,
+      "mbPerSec": 104.57651127372698,
+      "rates": [
+        104.57651127372698
+      ]
+    },
+    {
+      "lib": "fast-sha256",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": true,
+      "mbPerSec": 2.8579553268901687,
+      "rates": [
+        2.8579553268901687
+      ]
+    },
+    {
+      "lib": "node-forge",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": false,
+      "mbPerSec": 32.06691055903721,
+      "rates": [
+        32.06691055903721
+      ]
+    },
+    {
+      "lib": "node-forge",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": true,
+      "mbPerSec": 2.2410761719492136,
+      "rates": [
+        2.2410761719492136
+      ]
+    },
+    {
+      "lib": "@aws-crypto/sha256-js",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": false,
+      "mbPerSec": 82.35844102471607,
+      "rates": [
+        82.35844102471607
+      ]
+    },
+    {
+      "lib": "@aws-crypto/sha256-js",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": true,
+      "mbPerSec": 2.1497086096850926,
+      "rates": [
+        2.1497086096850926
+      ]
+    },
+    {
+      "lib": "asmcrypto.js",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": false,
+      "mbPerSec": 106.96342885604295,
+      "rates": [
+        106.96342885604295
+      ]
+    },
+    {
+      "lib": "asmcrypto.js",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": true,
+      "mbPerSec": 3.3933663415635364,
+      "rates": [
+        3.3933663415635364
+      ]
+    },
+    {
+      "lib": "crypto-js",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": false,
+      "mbPerSec": 37.068885387732664,
+      "rates": [
+        37.068885387732664
+      ]
+    },
+    {
+      "lib": "crypto-js",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": true,
+      "mbPerSec": 2.3248974267461033,
+      "rates": [
+        2.3248974267461033
+      ]
+    },
+    {
+      "lib": "jssha",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": false,
+      "mbPerSec": 32.1510381180377,
+      "rates": [
+        32.1510381180377
+      ]
+    },
+    {
+      "lib": "jssha",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": true,
+      "mbPerSec": 0.9266783754672546,
+      "rates": [
+        0.9266783754672546
+      ]
+    },
+    {
+      "lib": "hash.js",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": false,
+      "mbPerSec": 25.659056720730472,
+      "rates": [
+        25.659056720730472
+      ]
+    },
+    {
+      "lib": "hash.js",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": true,
+      "mbPerSec": 0.9974953691769998,
+      "rates": [
+        0.9974953691769998
+      ]
+    },
+    {
+      "lib": "node:crypto",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": false,
+      "mbPerSec": 1158.7918551996884,
+      "rates": [
+        1158.7918551996884
+      ],
+      "oneShot24MiBMs": 31.704289000000017
+    },
+    {
+      "lib": "node:crypto",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": true,
+      "mbPerSec": 1221.7332913464352,
+      "rates": [
+        1221.7332913464352
+      ],
+      "oneShot24MiBMs": 31.358202000000006
+    }
+  ]
+}

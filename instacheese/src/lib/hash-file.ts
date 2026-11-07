@@ -1,4 +1,5 @@
-import { sha256 } from 'js-sha256';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
 
 // Time-sliced SHA-256 of a big file read through a synchronous reader.
 // Kept free of Expo/React Native imports so bench/hash/ can run this exact
@@ -30,11 +31,11 @@ export interface HashSlicing {
   budgetMs: number;
 }
 
-// js-sha256 runs ~2.6 MB/s in an interpreter on the bench machine (node
-// --jitless, standing in for Hermes; bench/hash), so a 16 KiB slice is ~6 ms
-// there and the longest stretch ~31 ms — room for a phone twice as slow to
-// stay under ~50 ms. Other pure-JS SHA-256 libraries are no faster without a
-// JIT (@noble/hashes is ~1.7x slower), so the library stays.
+// The hash is @noble/hashes (~3x js-sha256 under a JIT; bench/hash). Its
+// interpreter speed (node --jitless, a stand-in for Hermes) was lower in the
+// bench, but the stretch length is bounded by budgetMs, not by the library:
+// a slower hash just yields more often. The upload log records MB/s per file
+// so the real Hermes speed shows up in a debug export.
 export const DEFAULT_HASH_SLICING: HashSlicing = {
   readSize: 1024 * 1024,
   sliceSize: 16 * 1024,
@@ -44,9 +45,18 @@ export const DEFAULT_HASH_SLICING: HashSlicing = {
 export interface Sha256OfReaderOptions {
   now?: () => number;
   slicing?: HashSlicing;
-  // Benchmarks swap in other libraries; the app always uses js-sha256, whose
-  // 64-bit byte counter (hBytes) keeps files over 4 GiB correct.
+  // Benchmarks swap in other libraries. The app uses @noble/hashes, whose
+  // 64-bit length encoding keeps files over 4 GiB correct (bench/hash
+  // equivalence covers a 4 GiB+ file).
   createHash?: () => IncrementalHash;
+}
+
+function nobleSha256(): IncrementalHash {
+  const h = sha256.create();
+  return {
+    update: (data) => h.update(data),
+    hex: () => bytesToHex(h.digest()),
+  };
 }
 
 export async function sha256OfReader(
@@ -63,7 +73,7 @@ export async function sha256OfReader(
 ): Promise<string> {
   const now = options.now ?? Date.now;
   const { readSize, sliceSize, budgetMs } = options.slicing ?? DEFAULT_HASH_SLICING;
-  const hash = (options.createHash ?? (() => sha256.create()))();
+  const hash = (options.createHash ?? nobleSha256)();
   let read = 0;
   let stretchStart = now();
   while (read < size) {

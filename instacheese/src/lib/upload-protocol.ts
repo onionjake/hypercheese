@@ -313,7 +313,14 @@ export async function cachedSha256OfFile(
   const key = cacheKey && size !== undefined && size >= 2 ** 31 ? `${cacheKey}:v2` : cacheKey;
   const cache = key ? await loadShaCache() : null;
   if (cache && key && cache[key]) return cache[key];
+  const started = Date.now();
   const sha = await sha256OfFile(uri, size);
+  if (size !== undefined && size > 0) {
+    // Real on-device hash speed (Hermes has no JIT; bench/hash only has
+    // stand-ins), for the debug export.
+    const ms = Math.max(1, Date.now() - started);
+    log('upload', `hashed ${size} bytes in ${ms} ms (${(size / 1048576 / (ms / 1000)).toFixed(1)} MB/s)`);
+  }
   if (cache && key) {
     cache[key] = sha;
     shaCacheDirty = true;
