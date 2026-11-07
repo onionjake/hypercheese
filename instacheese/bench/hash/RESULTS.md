@@ -19,11 +19,14 @@ built up. Longest block: **6223 ms → 30 ms** under the interpreter stand-in
 the hash is identical to node:crypto in every case tested, including a
 file over 4 GiB.
 
-**Library question:** switching pure-JS libraries does **not** help much
-on Hermes. Libraries that run 2–3× faster than js-sha256 with a JIT run at
-about the same speed without one, and the JIT favourite, @noble/hashes, is
-**1.7× slower**. The app keeps js-sha256 and gets no new dependency. The big
-remaining gain is native hashing (see the end).
+**Library question — now measured on real Hermes** (release APK, Android
+emulator; see [Android emulator, Hermes](#android-emulator-hermes-measured)):
+pure-JS libraries are within ~15% of each other except **@noble/hashes,
+which is 1.75× slower than js-sha256** (2.7 vs 4.8 MB/s). The `--jitless`
+stand-in got the ranking right. Hermes itself is ~1.4–1.7× faster than
+V8's interpreter on this code, but still ~16× slower than V8's JIT. The
+only big win is native hashing: expo-crypto's one-shot digest runs at
+~2.3 GB/s on the same emulator, ~480× js-sha256.
 
 ## Method
 
@@ -116,7 +119,90 @@ Because of this, and to avoid new dependencies, the app keeps js-sha256 and
 `bench/hash/package.json`. WASM hashers (hash-wasm) can't run: Hermes has no
 WebAssembly. `sha.js` needs Node's `Buffer` and was skipped.
 
+## Android emulator, Hermes (measured)
+
+Real numbers from a **release** APK (`assembleRelease` from the "Build
+InstaCheese APK" workflow on a branch; Hermes bytecode from `hermesc -O`)
+running the temporary `instacheese://hash-bench` screen
+(`device/hash-bench.tsx`; how to rerun: `device/README.md`). Raw lines:
+`results/device-emulator-hermes.jsonl`.
+
+- **Device:** Clickwork "Medium Phone (Arm)" emulator, `sdk_gphone64_arm64`,
+  Android 15 (API 35), 4 cores, 4 GB. ABI **arm64-v8a** (the APK's
+  `primaryCpuAbi`; Clickwork only offers Arm emulators). The host CPU
+  reports implementer `0x61` (Apple), i.e. Apple-silicon cores under
+  virtualisation, so absolute speeds are likely **faster than a typical
+  phone** (a mid-range phone's big core maybe 1.5–2×, its little cores
+  3–4× slower). Ratios between libraries carry over: same interpreter,
+  same ISA. A real-phone run (Pixel, ~$14/h on Clickwork) was not done.
+- **Engine:** Hermes **V1, `250829098.0.14`** (RN 0.86's default; Static
+  Hermes build, `Build: Release`, GC hades, no JIT — it is compiled out),
+  `__DEV__ = false`, bytecode version 98, no WebAssembly.
+- **Correctness:** every library matched the `abc` and 448-bit NIST
+  vectors and expo-crypto's native digest of 1 MiB + 7 bytes fed in 4099-byte
+  slices. Both shipped-loop runs over the 128 MiB file produced
+  `6d3dd328…9d1c12`, which matches node:crypto on the same content.
+
+### In-memory throughput (16 MiB, 32 KiB updates, median of 5)
+
+| library | Hermes on emulator (arm64) | Hermes CLI, x86-64 ¹ | node `--jitless`, same x86-64 ¹ | V8 JIT, same x86-64 ¹ |
+|---|---|---|---|---|
+| asmcrypto.js 2.3.2 ² | **5.50 MB/s** | 4.3 | 4.12 | 175 |
+| **js-sha256** 0.11.1 | **4.80 MB/s** | 4.6–4.7 | 3.30 | 78 |
+| fast-sha256 1.3.0 | 4.75 MB/s | 3.3–3.6 ³ | 3.75 | 162 |
+| @stablelib/sha256 2.0.1 | 4.60 MB/s | 4.0–4.1 ³ | 3.51 | 160 |
+| **@noble/hashes** 2.4.0 (shipped since a47a46d) | **2.73 MB/s** | 2.7 | 1.65 | 218 |
+| *expo-crypto `Crypto.digest` (native, one shot)* | *2250 MB/s (16 MiB: 7.5 ms), 2300 MB/s (64 MiB: 29.2 ms)* | — | — | — |
+
+Run-to-run spread on the emulator was under 1% for every library.
+
+¹ Hermes CLI built from the same tag (`hermes-v250829098.0.14`, CMake
+Release, run as `hermesc -O` bytecode) on a Clickwork Linux VM (AMD
+EPYC-Milan 2.0 GHz). Two runs; `results/hermes-cli-linux-x64.jsonl`.
+Node v22.23.0 on the same VM for the `--jitless`/JIT columns.
+Bundler: `device/hermes-cli/bundle.mjs`.
+² Imported as `asmcrypto.js/dist_es5/hash/sha256/sha256`: the package's
+main file requires Node's `crypto` and does not bundle with Metro.
+³ Noisy VM: individual runs ranged 3.8–5.4 s.
+
+### Shipped `sha256OfReader` on a real 128 MiB file (3 runs)
+
+The file is in the app's cache directory and read with
+`FileHandle.readBytes` exactly as `sha256OfFile` does (1 MiB reads, 16 KiB
+slices, 20 ms budget). Yields are `setTimeout(0)`, as `yieldToUI` does in
+the foreground. "Block" is the time between yields.
+
+| library | wall time | MB/s (wall) | MB/s (JS busy only) | longest block, median (worst) | p95 block | yields |
+|---|---|---|---|---|---|---|
+| @noble/hashes (shipped) | 68.4 s | 1.96 | 2.71 | 28.8 ms (31.2) | 25.0 ms | ~2055 |
+| js-sha256 | 45.5 s | 2.95 | 4.69 | 29.0 ms (38.5) | 21.8 ms | ~1370 |
+
+- The block bound holds on the device: ~20 ms budget + one slice + one read.
+- **Yields are expensive:** each `setTimeout(0)` round trip cost ~9–12 ms
+  (RN timers fire on the next frame tick), so 28–37% of the wall time is
+  spent waiting (the JS thread is free for UI then, which is the point).
+  A 1 GB video therefore takes **~8.5 min with @noble/hashes vs ~5.7 min
+  with js-sha256** on this emulator, and longer on a phone.
+- `readBytes` itself is cheap: 1 MiB reads median 0.6 ms (max 5.7 ms),
+  1.6 GB/s; 16 MiB reads 16.7 ms (max 36.9 ms). The hash is >99% of the cost.
+
+### Conclusion
+
+- **@noble/hashes is the wrong pure-JS choice on Hermes:** 1.75× slower
+  than js-sha256 in memory, 1.5× longer wall time in the shipped loop, with
+  the same longest block. Its JIT advantage (2.8× on V8) does not exist on
+  Hermes. **Ship js-sha256** (still in `package.json`) as the JS hash.
+  asmcrypto.js is 15% faster than js-sha256 but unmaintained, needs a deep
+  import and copies input into its own heap; not worth it.
+- Native hashing is ~480× faster than any JS hash. With Expo SDK 58's
+  native `File.digest('SHA-256')` (expo-file-system), large files should
+  move to it; keep `sha256OfReader` + js-sha256 only as a fallback.
+
 ## Estimating Hermes on a phone
+
+*(Written before the device measurements above; kept for the record. The
+measured js-sha256 speed, 4.8 MB/s on an Apple-silicon-hosted emulator, sits
+above this range, as expected for that host.)*
 
 - V8 JIT vs `--jitless` for js-sha256 is about **22×** (58 vs 2.6 MB/s), so
   Node's JIT numbers say nothing about the phone.
@@ -223,9 +309,10 @@ that a >4 GiB video's hash matches the server and that a camera-roll
 
 ## Caveats
 
-- No Hermes VM: `--jitless` is a stand-in, and the phone estimates above
-  are reasoned, not measured. The time-based budget keeps the *block*
-  bound valid on any speed of device; only throughput is an estimate.
+- The Node sections use `--jitless` as a stand-in; the real Hermes
+  numbers are in "Android emulator, Hermes" (an emulator on an
+  Apple-silicon host, not a phone). The time-based budget keeps the
+  *block* bound valid on any speed of device.
 - The synthetic reader models the per-read allocation and copy, but not
   the native `readBytes` disk read or the JSI conversion cost on Android.
   Those are synchronous too, and smaller reads (1 MiB vs 16 MiB) shorten
@@ -255,4 +342,6 @@ node bench/hash/run.mjs --phase sweep        # slicing trade-off (~4 min)
 node bench/hash/run.mjs --quick              # smoke test (~40 s)
 ```
 
-Raw results: `results/*.json`, `results/full-run.log`, `results/equivalence.txt`.
+Raw results: `results/*.json`, `results/full-run.log`, `results/equivalence.txt`,
+`results/device-emulator-hermes.jsonl`, `results/hermes-cli-linux-x64.jsonl`.
+On-device and Hermes CLI benchmark: `device/README.md`.

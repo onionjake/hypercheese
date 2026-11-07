@@ -1,0 +1,15 @@
+{"kind":"env","machine":"Clickwork Linux default: AMD EPYC-Milan @ 2.0 GHz, 4 vCPU (VM)","hermes":{"Bytecode Version":98,"Static Hermes":true,"Builtins Frozen":false,"VM Experiments":0,"Build":"Release","GC":"hades (concurrent)","OSS Release Version":"1.0.0","Debugger Enabled":false,"CommonJS Modules":"None"},"source":"hermes-v250829098.0.14, cmake Release, hermesc -O","cfg":{"memMiB":16,"fileMiB":128,"runs":5,"fileRuns":3}}
+{"run":1,"kind":"libs","lib":"@noble/hashes","sizeMiB":16,"ms":[6088,6107,6117,6083,6139],"medianMbps":2.75,"correct":true}
+{"run":1,"kind":"libs","lib":"js-sha256","sizeMiB":16,"ms":[3693,3518,3680,3566,3634],"medianMbps":4.62,"correct":true}
+{"run":1,"kind":"libs","lib":"@stablelib/sha256","sizeMiB":16,"ms":[4657,4171,4317,3604,3672],"medianMbps":4.02,"correct":true}
+{"run":1,"kind":"libs","lib":"fast-sha256","sizeMiB":16,"ms":[3936,5273,5341,4723,4316],"medianMbps":3.55,"correct":true}
+{"run":1,"kind":"libs","lib":"asmcrypto.js","sizeMiB":16,"ms":[3871,3922,3938,3890,3906],"medianMbps":4.3,"correct":true}
+{"run":1,"kind":"reader","lib":"@noble/hashes","fileMiB":128,"mbps":2.71,"medianMaxBlockMs":27,"medianP95BlockMs":25,"blocks":2064,"correct":true}
+{"run":1,"kind":"reader","lib":"js-sha256","fileMiB":128,"mbps":4.56,"medianMaxBlockMs":24,"medianP95BlockMs":23,"blocks":1378,"correct":true}
+{"run":2,"kind":"libs","lib":"@noble/hashes","sizeMiB":16,"ms":[6338,6159,6259,6253,6133],"medianMbps":2.68,"correct":true}
+{"run":2,"kind":"libs","lib":"js-sha256","sizeMiB":16,"ms":[3627,3622,3440,3589,3459],"medianMbps":4.67,"correct":true}
+{"run":2,"kind":"libs","lib":"@stablelib/sha256","sizeMiB":16,"ms":[4035,4047,4112,4890,4878],"medianMbps":4.08,"correct":true}
+{"run":2,"kind":"libs","lib":"fast-sha256","sizeMiB":16,"ms":[3785,4099,5321,5350,5132],"medianMbps":3.27,"correct":true}
+{"run":2,"kind":"libs","lib":"asmcrypto.js","sizeMiB":16,"ms":[3861,3931,3944,3937,3900],"medianMbps":4.27,"correct":true}
+{"kind":"same-machine node v22.23.0 --jitless (libs only)","libs":{"@noble/hashes":1.65,"js-sha256":3.3,"@stablelib/sha256":3.51,"fast-sha256":3.75,"asmcrypto.js":4.12}}
+{"kind":"same-machine node v22.23.0 JIT","libs":{"@noble/hashes":218.25,"js-sha256":78.18,"@stablelib/sha256":159.97,"fast-sha256":161.92,"asmcrypto.js":174.89},"reader128MiB":{"@noble/hashes":{"mbps":230.25,"maxBlockMs":20.1},"js-sha256":{"mbps":80.65,"maxBlockMs":20.25}}}

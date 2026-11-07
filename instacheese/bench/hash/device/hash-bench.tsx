@@ -65,6 +65,36 @@ const pct = (xs: number[], p: number) => {
 const r1 = (x: number) => Math.round(x * 10) / 10;
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
+// Test data: a 1 MiB + 7 byte xorshift pattern (as bench/hash/common.mjs),
+// repeated. expo-crypto's getRandomBytes caps at 1024 bytes.
+function xorshiftBytes(n: number, seed: number): Uint8Array<ArrayBuffer> {
+  const o = new Uint8Array(n);
+  let x = seed >>> 0 || 1;
+  for (let i = 0; i < n; i++) {
+    x ^= x << 13;
+    x >>>= 0;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    x >>>= 0;
+    o[i] = x & 0xff;
+  }
+  return o;
+}
+let pattern: Uint8Array<ArrayBuffer> | null = null;
+function patterned(n: number, offset = 0): Uint8Array<ArrayBuffer> {
+  pattern ??= xorshiftBytes(MiB + 7, 0x9e3779b9);
+  const out = new Uint8Array(n);
+  let pos = 0;
+  let p = offset % pattern.length;
+  while (pos < n) {
+    const k = Math.min(pattern.length - p, n - pos);
+    out.set(pattern.subarray(p, p + k), pos);
+    pos += k;
+    p = 0;
+  }
+  return out;
+}
+
 const ABC = new Uint8Array([0x61, 0x62, 0x63]) as Uint8Array<ArrayBuffer>;
 const ABC_HEX = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
 const NIST2 = new TextEncoder().encode('abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq');
@@ -124,8 +154,8 @@ export default function HashBench() {
         };
         out(`env ${JSON.stringify(env)}`, env);
 
-        // In-memory test data: native random bytes (fast to make).
-        const data = Crypto.getRandomBytes(memMiB * MiB) as Uint8Array<ArrayBuffer>;
+        // In-memory test data.
+        const data = patterned(memMiB * MiB);
         const nativeHex = hex(
           new Uint8Array(await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, data))
         );
@@ -176,7 +206,7 @@ export default function HashBench() {
         // --- Native ceiling: expo-crypto one-shot digest ---------------------
         if (only.has('native')) {
           for (const sizeMiB of [16, 64]) {
-            const buf = sizeMiB === memMiB ? data : (Crypto.getRandomBytes(sizeMiB * MiB) as Uint8Array<ArrayBuffer>);
+            const buf = sizeMiB === memMiB ? data : patterned(sizeMiB * MiB);
             const ms: number[] = [];
             for (let i = 0; i < runs; i++) {
               const t = now();
@@ -206,7 +236,7 @@ export default function HashBench() {
             const t = now();
             const w = file.open(FileMode.ReadWrite);
             try {
-              for (let i = 0; i < fileMiB; i++) w.writeBytes(Crypto.getRandomBytes(MiB));
+              for (let i = 0; i < fileMiB; i++) w.writeBytes(patterned(MiB, i * MiB));
             } finally {
               w.close();
             }

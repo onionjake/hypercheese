@@ -24,8 +24,6 @@ function RootNavigator() {
     if (status === 'loading') return;
     SplashScreen.hideAsync();
     const onLogin = segments[0] === 'login';
-    // TEMPORARY (bench/hash/device): the benchmark screen runs signed out.
-    if ((segments[0] as string) === 'hash-bench') return;
     if (status === 'signedOut' && !onLogin) {
       // A forced sign-out (startup 401) can land while an item or the queue
       // is pushed: replace() would only swap that top screen, leaving the old

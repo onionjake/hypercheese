@@ -1,0 +1,21 @@
+{"kind":"env","hermes":{"Bytecode Version":98,"Static Hermes":true,"Builtins Frozen":false,"VM Experiments":0,"Build":"Release","GC":"hades (concurrent)","OSS Release Version":"250829098.0.14","Debugger Enabled":false,"CommonJS Modules":"None"},"dev":false,"platform":"android","constants":{"uiMode":"normal","reactNativeVersion":{"minor":86,"prerelease":null,"patch":0,"major":0},"isTesting":false,"Brand":"google","Manufacturer":"Google","Release":"15","Fingerprint":"google/sdk_gphone64_arm64/emu64a:15/AE3A.240806.043/12960925:userdebug/dev-keys","Serial":"unknown","Model":"sdk_gphone64_arm64","Version":35},"device":{"brand":"google","manufacturer":"Google","modelName":"sdk_gphone64_arm64","isDevice":false,"osVersion":"15","abis":["arm64-v8a"],"totalMemory":4111405056},"webassembly":"undefined","params":{"memMiB":16,"fileMiB":128,"runs":5,"fileRuns":3,"only":["env","check","native","read","reader","libs"]}}
+{"kind":"check","lib":"@noble/hashes","abc":true,"nist448":true,"native1MiBOdd":true}
+{"kind":"check","lib":"js-sha256","abc":true,"nist448":true,"native1MiBOdd":true}
+{"kind":"check","lib":"@stablelib/sha256","abc":true,"nist448":true,"native1MiBOdd":true}
+{"kind":"check","lib":"fast-sha256","abc":true,"nist448":true,"native1MiBOdd":true}
+{"kind":"check","lib":"asmcrypto.js","abc":true,"nist448":true,"native1MiBOdd":true}
+{"kind":"check","lib":"expo-crypto","abc":true}
+{"kind":"native","lib":"expo-crypto Crypto.digest","sizeMiB":16,"ms":[7.7,14.4,7.1,7.3,7.5],"medianMs":7.5,"mbps":2251.6}
+{"kind":"native","lib":"expo-crypto Crypto.digest","sizeMiB":64,"ms":[28.3,35.5,29.1,29.2,30],"medianMs":29.2,"mbps":2301.1}
+{"text":"wrote 128 MiB file in 142.8 ms"}
+{"kind":"read","readSizeMiB":1,"fileMiB":128,"ms":[82.7,96.8,72.6],"mbps":1623.5,"maxReadMs":5.7,"medianReadMs":0.6}
+{"kind":"read","readSizeMiB":16,"fileMiB":128,"ms":[163.6,133.6,96.3],"mbps":1004.9,"maxReadMs":36.9,"medianReadMs":16.7}
+{"kind":"reader","lib":"@noble/hashes","fileMiB":128,"runs":[{"ms":68669.9,"maxBlock":28.8,"p95Block":25.1,"blocks":2059},{"ms":68369,"maxBlock":31.2,"p95Block":24.9,"blocks":2052},{"ms":68423.3,"maxBlock":26,"p95Block":25,"blocks":2053}],"mbps":1.96,"busyMbps":2.71,"medianMaxBlockMs":28.8,"worstMaxBlockMs":31.2,"medianP95BlockMs":25,"digest":"6d3dd32801dd029dc7bd16f8023e6c5ab3fe9794ba5814c5c8d20457bc9d1c12"}
+{"kind":"reader","lib":"js-sha256","fileMiB":128,"runs":[{"ms":45551.2,"maxBlock":29,"p95Block":21.7,"blocks":1367},{"ms":45515.1,"maxBlock":23,"p95Block":21.8,"blocks":1366},{"ms":47496.7,"maxBlock":38.5,"p95Block":23.2,"blocks":1414}],"mbps":2.95,"busyMbps":4.69,"medianMaxBlockMs":29,"worstMaxBlockMs":38.5,"medianP95BlockMs":21.8,"digest":"6d3dd32801dd029dc7bd16f8023e6c5ab3fe9794ba5814c5c8d20457bc9d1c12"}
+{"kind":"reader-agree","ok":true}
+{"kind":"libs","lib":"@noble/hashes","sizeMiB":16,"ms":[6141.6,6144.8,6144.5,6112.7,6135],"mbps":[2.73,2.73,2.73,2.74,2.73],"medianMbps":2.73,"correct":true}
+{"kind":"libs","lib":"js-sha256","sizeMiB":16,"ms":[3506,3506.2,3492.8,3493.5,3492],"mbps":[4.79,4.78,4.8,4.8,4.8],"medianMbps":4.8,"correct":true}
+{"kind":"libs","lib":"@stablelib/sha256","sizeMiB":16,"ms":[3650.5,3646.5,3680,3649.9,3649.2],"mbps":[4.6,4.6,4.56,4.6,4.6],"medianMbps":4.6,"correct":true}
+{"kind":"libs","lib":"fast-sha256","sizeMiB":16,"ms":[3530.4,3537.5,3531.8,3527.6,3521.5],"mbps":[4.75,4.74,4.75,4.76,4.76],"medianMbps":4.75,"correct":true}
+{"kind":"libs","lib":"asmcrypto.js","sizeMiB":16,"ms":[3052.5,3064.2,3052,3055.9,3052.8],"mbps":[5.5,5.48,5.5,5.49,5.5],"medianMbps":5.5,"correct":true}
+{"kind":"done"}
