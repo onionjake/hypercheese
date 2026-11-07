@@ -16,6 +16,7 @@ import { Hash as FastSha256 } from 'fast-sha256';
 import { sha256 as jsSha256 } from 'js-sha256';
 import { useEffect, useRef, useState } from 'react';
 import { Platform, ScrollView, Text } from 'react-native';
+import ReactNativeBlobUtil from 'react-native-blob-util';
 
 import { sha256OfReader, type IncrementalHash } from '@/lib/hash-file';
 import { log } from '@/lib/log';
@@ -31,8 +32,24 @@ function hex(u8: Uint8Array): string {
   return s;
 }
 
+// Native candidates are loaded defensively: a native-module failure should
+// show up as a result line, not kill the whole screen.
+let quickCrypto: typeof import('react-native-quick-crypto') | null = null;
+let quickCryptoError = '';
+try {
+  quickCrypto = require('react-native-quick-crypto');
+} catch (err) {
+  quickCryptoError = String(err);
+}
+const QC = 'quick-crypto (native JSI)';
+
 // Every library behind the IncrementalHash interface sha256OfReader takes.
 const LIBS: Record<string, () => IncrementalHash> = {
+  [QC]: () => {
+    // Synchronous JSI update/digest on the JS thread (OpenSSL).
+    const h = quickCrypto!.createHash('sha256');
+    return { update: (d) => h.update(d), hex: () => h.digest('hex') };
+  },
   '@noble/hashes': () => {
     const h = nobleSha256.create();
     return { update: (d) => h.update(d), hex: () => bytesToHex(h.digest()) };
@@ -51,6 +68,8 @@ const LIBS: Record<string, () => IncrementalHash> = {
     return { update: (d) => h.process(d), hex: () => hex(h.finish().result!) };
   },
 };
+
+const ACTIVE_LIBS = Object.entries(LIBS).filter(([name]) => name !== QC || quickCrypto);
 
 const median = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b);
@@ -87,7 +106,7 @@ export default function HashBench() {
     const fileMiB = Number(params.file ?? 128);
     const runs = Number(params.runs ?? 5);
     const fileRuns = Number(params.fileRuns ?? 3);
-    const only = new Set((params.only ?? 'env,check,native,read,reader,libs').split(','));
+    const only = new Set((params.only ?? 'env,check,native,read,reader,blob,libs').split(','));
 
     const out = (text: string, record?: object) => {
       setLines((ls) => [...ls, text]);
@@ -120,6 +139,7 @@ export default function HashBench() {
           },
           webassembly: typeof (globalThis as { WebAssembly?: unknown }).WebAssembly,
           params: { memMiB, fileMiB, runs, fileRuns, only: [...only] },
+          quickCrypto: quickCrypto ? 'loaded' : `failed: ${quickCryptoError}`,
         };
         out(`env ${JSON.stringify(env)}`, env);
 
@@ -131,7 +151,7 @@ export default function HashBench() {
 
         // --- Correctness ----------------------------------------------------
         if (only.has('check')) {
-          for (const [name, make] of Object.entries(LIBS)) {
+          for (const [name, make] of ACTIVE_LIBS) {
             const oneShot = (d: Uint8Array) => {
               const h = make();
               h.update(d);
@@ -196,6 +216,7 @@ export default function HashBench() {
         }
 
         // --- Real file: create, then readBytes alone, then the shipped loop --
+        let fileHex = '';
         const file = new File(Paths.cache, 'hash-bench.bin');
         const fileSize = fileMiB * MiB;
         if (only.has('read') || only.has('reader')) {
@@ -252,7 +273,7 @@ export default function HashBench() {
 
         if (only.has('reader')) {
           const digests: Record<string, string> = {};
-          for (const name of ['@noble/hashes', 'js-sha256']) {
+          for (const name of ['@noble/hashes', 'js-sha256', ...(quickCrypto ? [QC] : [])]) {
             const per: {
               ms: number;
               maxBlock: number;
@@ -314,16 +335,64 @@ export default function HashBench() {
               res
             );
           }
+          const agree =
+            digests['@noble/hashes'] === digests['js-sha256'] &&
+            digests['js-sha256'] === digests[QC];
+          out(`reader digests agree: ${agree}`, { kind: 'reader-agree', ok: agree, digests });
+          fileHex = digests['@noble/hashes'];
+        }
+
+        // --- react-native-blob-util fs.hash: native, off the JS thread -------
+        if (only.has('blob')) {
+          const path = decodeURIComponent(file.uri.replace(/^file:\/\//, ''));
+          const ms: number[] = [];
+          const gaps: number[] = [];
+          let digest = '';
+          for (let i = 0; i < fileRuns; i++) {
+            // Probe: how long the JS thread goes without running a timer
+            // while the native hash runs (should stay ~1 frame).
+            let done = false;
+            let last = now();
+            let maxGap = 0;
+            const probe = (async () => {
+              while (!done) {
+                await sleep0();
+                const t = now();
+                maxGap = Math.max(maxGap, t - last);
+                last = t;
+              }
+            })();
+            const t = now();
+            try {
+              digest = await ReactNativeBlobUtil.fs.hash(path, 'sha256');
+            } finally {
+              done = true;
+            }
+            ms.push(now() - t);
+            await probe;
+            gaps.push(maxGap);
+            await sleep0();
+          }
+          const res = {
+            kind: 'blob',
+            lib: 'react-native-blob-util fs.hash',
+            fileMiB,
+            ms: ms.map(r1),
+            mbps: r1(fileSize / 1e6 / (median(ms) / 1000)),
+            maxJsGapMs: gaps.map(r1),
+            digest,
+            matchesReader: fileHex ? digest === fileHex : null,
+          };
           out(
-            `reader digests agree: ${digests['@noble/hashes'] === digests['js-sha256']}`,
-            { kind: 'reader-agree', ok: digests['@noble/hashes'] === digests['js-sha256'] }
+            `blob-util fs.hash ${fileMiB} MiB: ${res.mbps} MB/s (median ${r1(median(ms))} ms), JS max gap ${res.maxJsGapMs.join('/')} ms, matches=${res.matchesReader}`,
+            res
           );
         }
 
         // --- Pure-JS throughput, in memory, 32 KiB updates -----------------
         if (only.has('libs')) {
           const step = 32 * 1024;
-          for (const [name, make] of Object.entries(LIBS)) {
+          for (const [name, make] of ACTIVE_LIBS) {
             // Warm-up (1 MiB) so lazy init/tables aren't timed.
             {
               const h = make();
