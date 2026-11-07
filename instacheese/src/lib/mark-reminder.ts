@@ -58,10 +58,44 @@ function serialized(fn: () => Promise<void>): Promise<void> {
   return run;
 }
 
+// The library screen refreshes on every tap and queue settle. Each refresh
+// is a handful of native round trips (Keystore read, permission check,
+// cancel and schedule broadcasts), so a burst of taps used to queue dozens of
+// them, all re-deriving the same reminder. Refreshes still waiting their turn
+// are therefore merged: a new one joins the queued one (latest count wins),
+// so at most one runs and one waits. Only the last refresh's result ever
+// mattered — each one replaces the schedule wholesale.
+let queuedRefresh: { unmarked: number | undefined; dropped: boolean; run: Promise<void> } | null =
+  null;
+
+// What this process last left scheduled: the reminder's body, null for
+// nothing, undefined when unknown (process start, or a change that failed
+// partway). Only touched inside the chain. A refresh that would leave
+// exactly this in place skips its native calls — re-running it could only
+// cancel and re-schedule the same content, or (signed out, setting off, no
+// permission) leave it alone, which is what skipping does. Sign-out and
+// toggle-off still always cancel. Nothing else in the app cancels or
+// schedules this reminder, so the record can't go stale while the process
+// lives; a new process starts from unknown and does the full refresh.
+let scheduledBody: string | null | undefined;
+
+function reminderBody(count: number): string | null {
+  if (count <= 0) return null;
+  return count === 1
+    ? '1 photo in your library still needs a Back up or Won’t upload decision.'
+    : `${count} photos in your library still need a Back up or Won’t upload decision.`;
+}
+
 export function cancelMarkReminder(): Promise<void> {
+  // A refresh still waiting ahead of this cancel can be dropped: whatever it
+  // would schedule, this cancel removes right after.
+  if (queuedRefresh) queuedRefresh.dropped = true;
+  queuedRefresh = null;
   return serialized(async () => {
     try {
+      scheduledBody = undefined;
       await Notifications.cancelScheduledNotificationAsync(REMINDER_ID);
+      scheduledBody = null;
     } catch (err) {
       logError('reminder', 'could not cancel reminder', err);
     }
@@ -72,11 +106,31 @@ export function cancelMarkReminder(): Promise<void> {
 // the current unmarked count, or nothing when the pool is empty. Pass the
 // count if the caller just computed it; otherwise it's read from the catalog.
 export function refreshMarkReminder(unmarked?: number): Promise<void> {
-  return serialized(() => scheduleMarkReminder(unmarked));
+  if (queuedRefresh) {
+    queuedRefresh.unmarked = unmarked;
+    return queuedRefresh.run;
+  }
+  const entry = { unmarked, dropped: false, run: Promise.resolve() };
+  queuedRefresh = entry;
+  entry.run = serialized(async () => {
+    // Started: later calls queue a new refresh behind this one.
+    if (queuedRefresh === entry) queuedRefresh = null;
+    if (entry.dropped) return;
+    await scheduleMarkReminder(entry.unmarked);
+  });
+  return entry.run;
 }
 
 async function scheduleMarkReminder(unmarked?: number): Promise<void> {
   try {
+    // Already scheduled exactly so (see scheduledBody): nothing to do.
+    if (
+      unmarked !== undefined &&
+      scheduledBody !== undefined &&
+      reminderBody(unmarked) === scheduledBody
+    ) {
+      return;
+    }
     if (!(await getSettings()).nightlyMarkReminder) return;
     // Signed out: a refresh still in flight from before the sign-out (the
     // background task finishing its drain, a Back up press still awaiting
@@ -88,20 +142,22 @@ async function scheduleMarkReminder(unmarked?: number): Promise<void> {
     if (!permission.granted) return;
 
     const count = unmarked ?? (await libraryCounts()).unmarked;
+    const body = reminderBody(count);
+    if (scheduledBody !== undefined && body === scheduledBody) return;
     // Cancel-then-schedule (rather than relying on identifier replacement)
     // so a count that dropped to zero removes the pending notification.
+    scheduledBody = undefined;
     await Notifications.cancelScheduledNotificationAsync(REMINDER_ID);
-    if (count <= 0) return;
+    scheduledBody = null;
+    if (body === null) return;
 
+    scheduledBody = undefined;
     await ensureChannel();
     await Notifications.scheduleNotificationAsync({
       identifier: REMINDER_ID,
       content: {
         title: 'Photos waiting to be marked',
-        body:
-          count === 1
-            ? '1 photo in your library still needs a Back up or Won’t upload decision.'
-            : `${count} photos in your library still need a Back up or Won’t upload decision.`,
+        body,
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DAILY,
@@ -110,6 +166,7 @@ async function scheduleMarkReminder(unmarked?: number): Promise<void> {
         channelId: CHANNEL_ID,
       },
     });
+    scheduledBody = body;
   } catch (err) {
     // An app build predating the notifications native module lands here; the
     // rest of the app must keep working without the reminder.

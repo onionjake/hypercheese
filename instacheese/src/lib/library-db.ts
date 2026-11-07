@@ -61,7 +61,6 @@ async function openDb(): Promise<SQLite.SQLiteDatabase> {
         );
         CREATE INDEX IF NOT EXISTS idx_assets_creation ON assets (creation_time DESC);
         CREATE INDEX IF NOT EXISTS idx_assets_selected ON assets (selected);
-        CREATE INDEX IF NOT EXISTS idx_assets_status ON assets (status);
         CREATE TABLE IF NOT EXISTS meta (
           key TEXT PRIMARY KEY NOT NULL,
           value TEXT NOT NULL
@@ -84,6 +83,27 @@ async function openDb(): Promise<SQLite.SQLiteDatabase> {
       if (!cols.some((c) => c.name === 'missing_since')) {
         await db.execAsync('ALTER TABLE assets ADD COLUMN missing_since INTEGER');
       }
+      // Indexes over the migrated columns, so after the ALTERs above. On an
+      // existing catalog the first open builds them once (a few hundred ms
+      // for tens of thousands of rows); after that it's a no-op.
+      //  - idx_assets_marks covers libraryCounts' GROUP BY, which runs on
+      //    every tap and queue settle: an index-only pass instead of a
+      //    full-table aggregate.
+      //  - idx_assets_status_creation serves the status filters (Unmarked,
+      //    Backed up, Failed) and markedForSync already in grid order, so a
+      //    page stops after LIMIT rows instead of sorting the whole status.
+      //    It leads with status, so it replaces idx_assets_status.
+      //  - idx_assets_excluded: excludedAssetIds (every drain batch) and the
+      //    Won't upload filter read only the excluded rows.
+      await db.execAsync(`
+        CREATE INDEX IF NOT EXISTS idx_assets_marks
+          ON assets (status, excluded, supported, selected, missing_since);
+        CREATE INDEX IF NOT EXISTS idx_assets_status_creation
+          ON assets (status, creation_time DESC, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_assets_excluded
+          ON assets (creation_time DESC, id DESC) WHERE excluded = 1;
+        DROP INDEX IF EXISTS idx_assets_status;
+      `);
       return db;
     })();
   }
@@ -428,6 +448,10 @@ const FILTER_WHERE: Record<AssetFilter, string> = {
 // drift whenever the filtered set changes between pages — on-screen edits
 // (Won't upload in the Unmarked view) and queue settles (Backed up / Failed)
 // do that constantly, skipping or repeating photos.
+// The row-value comparison is the same test as
+// `creation_time < ? OR (creation_time = ? AND id < ?)` (neither column is
+// nullable), but SQLite can seek an index with it instead of walking the
+// index from the newest photo on every page.
 export async function listAssets(
   filter: AssetFilter,
   limit: number,
@@ -437,9 +461,8 @@ export async function listAssets(
   const rows = after
     ? await db.getAllAsync(
         `SELECT * FROM assets WHERE (${FILTER_WHERE[filter]}) AND ${PRESENT}
-           AND (creation_time < ? OR (creation_time = ? AND id < ?))
+           AND (creation_time, id) < (?, ?)
          ORDER BY creation_time DESC, id DESC LIMIT ?`,
-        after.creationTime,
         after.creationTime,
         after.id,
         limit
@@ -463,31 +486,49 @@ export interface LibraryCounts {
   backupReady: number; // what "Back up" would commit: staged selection + pending
 }
 
+// Every tap on the Backup tab and every queue settle lands here. One count
+// per distinct mark combination (a few dozen rows at most), read off
+// idx_assets_marks without touching the table, then folded here — the same
+// totals as summing each condition over every row, at a fraction of the
+// cost on a large camera roll.
 export async function libraryCounts(): Promise<LibraryCounts> {
   const db = await openDb();
-  const row = await db.getFirstAsync<any>(`
-    SELECT
-      COUNT(*) AS total,
-      SUM(${UNMARKED_WHERE}) AS unmarked,
-      SUM(selected) AS selected,
-      SUM(status = 'synced') AS synced,
-      SUM(status = 'failed') AS failed,
-      SUM(excluded) AS excluded,
-      SUM(supported = 1 AND excluded = 0 AND status IN ('pending', 'failed')) AS pending,
-      SUM(supported = 1 AND (selected = 1 OR (excluded = 0 AND status IN ('pending', 'failed')))) AS backup_ready
+  const groups = await db.getAllAsync<{
+    status: string;
+    excluded: number;
+    supported: number;
+    selected: number;
+    n: number;
+  }>(`
+    SELECT status, excluded, supported, selected, COUNT(*) AS n
     FROM assets
     WHERE ${PRESENT}
+    GROUP BY status, excluded, supported, selected
   `);
-  return {
-    total: row?.total ?? 0,
-    unmarked: row?.unmarked ?? 0,
-    selected: row?.selected ?? 0,
-    synced: row?.synced ?? 0,
-    failed: row?.failed ?? 0,
-    excluded: row?.excluded ?? 0,
-    pending: row?.pending ?? 0,
-    backupReady: row?.backup_ready ?? 0,
+  const counts: LibraryCounts = {
+    total: 0,
+    unmarked: 0,
+    selected: 0,
+    synced: 0,
+    failed: 0,
+    excluded: 0,
+    pending: 0,
+    backupReady: 0,
   };
+  for (const g of groups) {
+    // Same conditions as UNMARKED_WHERE and the status filters.
+    const awaitingUpload =
+      g.supported === 1 && g.excluded === 0 && (g.status === 'pending' || g.status === 'failed');
+    counts.total += g.n;
+    if (g.supported === 1 && g.excluded === 0 && g.status === 'none') counts.unmarked += g.n;
+    counts.selected += g.selected * g.n;
+    if (g.status === 'synced') counts.synced += g.n;
+    if (g.status === 'failed') counts.failed += g.n;
+    counts.excluded += g.excluded * g.n;
+    if (awaitingUpload) counts.pending += g.n;
+    if (g.supported === 1 && (g.selected === 1 || awaitingUpload)) counts.backupReady += g.n;
+  }
+  return counts;
 }
 
 // The selection is a transient working set: checking boxes stages photos for

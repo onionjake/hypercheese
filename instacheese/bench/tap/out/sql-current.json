@@ -1,0 +1,1105 @@
+{
+  "impl": "current",
+  "sqlite": "3.53.4",
+  "node": "v22.23.4",
+  "sizes": [
+    {
+      "n": 5000,
+      "indexes": [
+        "idx_assets_creation",
+        "idx_assets_excluded",
+        "idx_assets_marks",
+        "idx_assets_selected",
+        "idx_assets_status_creation",
+        "sqlite_autoindex_assets_1"
+      ],
+      "counts": {
+        "total": 4986,
+        "unmarked": 1455,
+        "selected": 40,
+        "synced": 3024,
+        "failed": 25,
+        "excluded": 372,
+        "pending": 112,
+        "backupReady": 152
+      },
+      "results": [
+        {
+          "name": "libraryCounts",
+          "median": 0.3746919999999818,
+          "p90": 0.4209500000000048,
+          "iters": 25,
+          "digest": "3cf101a13f1d",
+          "plans": [
+            {
+              "sql": "SELECT status, excluded, supported, selected, COUNT(*) AS n FROM assets WHERE missing_since IS NULL GROUP BY status, excluded, supported, selected",
+              "plan": [
+                "SCAN assets USING COVERING INDEX idx_assets_marks"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tap: setSelected (1 id)",
+          "median": 0.20380800000003774,
+          "p90": 0.2703379999999811,
+          "iters": 25,
+          "digest": null,
+          "plans": [
+            {
+              "sql": "UPDATE assets SET selected = ? WHERE id IN (?)",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tap: toggle = setSelected+counts",
+          "median": 0.6469130000000405,
+          "p90": 0.7603039999999623,
+          "iters": 25,
+          "digest": "3cf101a13f1d",
+          "plans": [
+            {
+              "sql": "UPDATE assets SET selected = ? WHERE id IN (?)",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            },
+            {
+              "sql": "SELECT status, excluded, supported, selected, COUNT(*) AS n FROM assets WHERE missing_since IS NULL GROUP BY status, excluded, supported, selected",
+              "plan": [
+                "SCAN assets USING COVERING INDEX idx_assets_marks"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tap: setExcluded (won't upload)",
+          "median": 0.2355670000000032,
+          "p90": 0.2856830000000059,
+          "iters": 25,
+          "digest": null,
+          "plans": [
+            {
+              "sql": "UPDATE assets SET excluded = 1, selected = 0, error = NULL, status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'none' END WHERE id IN (?)",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tap: markForUpload (1 id)",
+          "median": 0.23246599999998807,
+          "p90": 0.25691100000000233,
+          "iters": 25,
+          "digest": null,
+          "plans": [
+            {
+              "sql": "UPDATE assets SET selected = 0, excluded = 0, error = NULL, failures = 0, status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'pending' END WHERE id IN (?) ",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "excludeSelected (40 checked)",
+          "median": 0.9523565000000076,
+          "p90": 1.0550849999999627,
+          "iters": 10,
+          "digest": "b39254461dd6",
+          "plans": [
+            {
+              "sql": "SELECT id FROM assets WHERE selected = 1",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_selected (selected=?)"
+              ]
+            },
+            {
+              "sql": "UPDATE assets SET excluded = 1, selected = 0, error = NULL, status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'none' END WHERE selected = 1",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_selected (selected=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "settle: markStatus synced",
+          "median": 0.16980999999998403,
+          "p90": 0.20796800000005078,
+          "iters": 25,
+          "digest": null,
+          "plans": [
+            {
+              "sql": "UPDATE assets SET status = ?, error = ?, failed_at = ?, failures = 0 WHERE id = ? AND mtime = ?",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "excludedAssetIds (per drain batch)",
+          "median": 0.24356799999998202,
+          "p90": 0.3026680000000397,
+          "iters": 25,
+          "digest": "0523fbcfed3d",
+          "plans": [
+            {
+              "sql": "SELECT id FROM assets WHERE excluded = 1",
+              "plan": [
+                "SCAN assets USING COVERING INDEX idx_assets_excluded"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "isExcluded",
+          "median": 0.01060199999994893,
+          "p90": 0.01258800000005067,
+          "iters": 25,
+          "digest": "7cb6efb98ba5",
+          "plans": [
+            {
+              "sql": "SELECT excluded FROM assets WHERE id = ?",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "markedForSync()",
+          "median": 0.4093760000000657,
+          "p90": 0.5291050000000723,
+          "iters": 25,
+          "digest": "c7a4c75304e4",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE supported = 1 AND excluded = 0 AND missing_since IS NULL AND status IN ('pending', 'failed') ORDER BY creation_time DESC, id DESC",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_marks (status=? AND excluded=? AND supported=?)",
+                "USE TEMP B-TREE FOR ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "markedForSync(auto retry)",
+          "median": 0.36483499999997093,
+          "p90": 0.40348099999994247,
+          "iters": 25,
+          "digest": "8eee7345e74c",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE supported = 1 AND excluded = 0 AND missing_since IS NULL AND status IN ('pending', 'failed') AND NOT (status = 'failed' AND (failures",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_marks (status=? AND excluded=? AND supported=?)",
+                "USE TEMP B-TREE FOR ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "markedForSync(includeSynced)",
+          "median": 11.028520499999956,
+          "p90": 12.135327000000075,
+          "iters": 10,
+          "digest": "c0ac81c2ef4c",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE supported = 1 AND excluded = 0 AND missing_since IS NULL AND status IN ('pending', 'failed', 'synced') ORDER BY creation_time DESC, i",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_marks (status=? AND excluded=? AND supported=?)",
+                "USE TEMP B-TREE FOR ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(unmarked) page 1",
+          "median": 0.1952449999999999,
+          "p90": 0.20879999999999654,
+          "iters": 25,
+          "digest": "629e46acaf74",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (supported = 1 AND excluded = 0 AND status = 'none') AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_status_creation (status=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(all) page 1",
+          "median": 0.21265299999993204,
+          "p90": 0.36192899999991823,
+          "iters": 25,
+          "digest": "8bd22a5f718c",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (1 = 1) AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SCAN assets USING INDEX idx_assets_creation",
+                "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(selected) page 1",
+          "median": 0.1473559999999452,
+          "p90": 0.178354000000013,
+          "iters": 25,
+          "digest": "9fa1d9e7cd25",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (selected = 1) AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_selected (selected=?)",
+                "USE TEMP B-TREE FOR ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(synced) page 1",
+          "median": 0.17799100000002,
+          "p90": 0.19720999999992728,
+          "iters": 25,
+          "digest": "72aa22ff91a9",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (status = 'synced') AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_status_creation (status=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(failed) page 1",
+          "median": 0.0992270000000417,
+          "p90": 0.11574300000006588,
+          "iters": 25,
+          "digest": "4aaa21dc5161",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (status = 'failed') AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_status_creation (status=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(excluded) page 1",
+          "median": 0.1774760000000697,
+          "p90": 0.20402599999999893,
+          "iters": 25,
+          "digest": "2367e54c1f6e",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (excluded = 1) AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SCAN assets USING INDEX idx_assets_excluded"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(unmarked) deep page",
+          "median": 0.20162199999992936,
+          "p90": 0.2386979999999994,
+          "iters": 25,
+          "digest": "cb6e2665d55e",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (supported = 1 AND excluded = 0 AND status = 'none') AND missing_since IS NULL AND (creation_time, id) < (?, ?) ORDER BY creation_tim",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_status_creation (status=? AND (creation_time,id)<(?,?))"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(all) deep page",
+          "median": 0.2216520000000628,
+          "p90": 0.24846800000000258,
+          "iters": 25,
+          "digest": "acda450a0a34",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (1 = 1) AND missing_since IS NULL AND (creation_time, id) < (?, ?) ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_creation (creation_time<?)",
+                "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(excluded) deep page",
+          "median": 0.20296200000007047,
+          "p90": 0.2169930000000022,
+          "iters": 25,
+          "digest": "a6eb70cf4d8c",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (excluded = 1) AND missing_since IS NULL AND (creation_time, id) < (?, ?) ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_excluded ((creation_time,id)<(?,?))"
+              ]
+            }
+          ]
+        }
+      ],
+      "scan": {
+        "name": "runScan (unchanged library)",
+        "median": 36.71475900000007,
+        "maxStatementMs": 4.308436000000029,
+        "tapDuringScan": {
+          "n": 11,
+          "median": 0.6505909999999631,
+          "max": 3.497297000000003
+        }
+      }
+    },
+    {
+      "n": 20000,
+      "indexes": [
+        "idx_assets_creation",
+        "idx_assets_excluded",
+        "idx_assets_marks",
+        "idx_assets_selected",
+        "idx_assets_status_creation",
+        "sqlite_autoindex_assets_1"
+      ],
+      "counts": {
+        "total": 19955,
+        "unmarked": 5979,
+        "selected": 40,
+        "synced": 11951,
+        "failed": 100,
+        "excluded": 1448,
+        "pending": 462,
+        "backupReady": 502
+      },
+      "results": [
+        {
+          "name": "libraryCounts",
+          "median": 1.3683960000000752,
+          "p90": 1.4887089999999716,
+          "iters": 25,
+          "digest": "91c94f73f14b",
+          "plans": [
+            {
+              "sql": "SELECT status, excluded, supported, selected, COUNT(*) AS n FROM assets WHERE missing_since IS NULL GROUP BY status, excluded, supported, selected",
+              "plan": [
+                "SCAN assets USING COVERING INDEX idx_assets_marks"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tap: setSelected (1 id)",
+          "median": 0.1863419999999678,
+          "p90": 0.22257599999988997,
+          "iters": 25,
+          "digest": null,
+          "plans": [
+            {
+              "sql": "UPDATE assets SET selected = ? WHERE id IN (?)",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tap: toggle = setSelected+counts",
+          "median": 1.6922069999998257,
+          "p90": 1.8304890000001706,
+          "iters": 25,
+          "digest": "91c94f73f14b",
+          "plans": [
+            {
+              "sql": "UPDATE assets SET selected = ? WHERE id IN (?)",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            },
+            {
+              "sql": "SELECT status, excluded, supported, selected, COUNT(*) AS n FROM assets WHERE missing_since IS NULL GROUP BY status, excluded, supported, selected",
+              "plan": [
+                "SCAN assets USING COVERING INDEX idx_assets_marks"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tap: setExcluded (won't upload)",
+          "median": 0.264699999999948,
+          "p90": 0.3280899999999747,
+          "iters": 25,
+          "digest": null,
+          "plans": [
+            {
+              "sql": "UPDATE assets SET excluded = 1, selected = 0, error = NULL, status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'none' END WHERE id IN (?)",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tap: markForUpload (1 id)",
+          "median": 0.21927400000004127,
+          "p90": 0.25957599999992453,
+          "iters": 25,
+          "digest": null,
+          "plans": [
+            {
+              "sql": "UPDATE assets SET selected = 0, excluded = 0, error = NULL, failures = 0, status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'pending' END WHERE id IN (?) ",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "excludeSelected (40 checked)",
+          "median": 1.4515830000000278,
+          "p90": 3.325415000000021,
+          "iters": 10,
+          "digest": "43d1f101857d",
+          "plans": [
+            {
+              "sql": "SELECT id FROM assets WHERE selected = 1",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_selected (selected=?)"
+              ]
+            },
+            {
+              "sql": "UPDATE assets SET excluded = 1, selected = 0, error = NULL, status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'none' END WHERE selected = 1",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_selected (selected=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "settle: markStatus synced",
+          "median": 0.17063899999993737,
+          "p90": 0.24853600000005827,
+          "iters": 25,
+          "digest": null,
+          "plans": [
+            {
+              "sql": "UPDATE assets SET status = ?, error = ?, failed_at = ?, failures = 0 WHERE id = ? AND mtime = ?",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "excludedAssetIds (per drain batch)",
+          "median": 0.6849229999997988,
+          "p90": 0.73404000000005,
+          "iters": 25,
+          "digest": "9f27bfefe08d",
+          "plans": [
+            {
+              "sql": "SELECT id FROM assets WHERE excluded = 1",
+              "plan": [
+                "SCAN assets USING COVERING INDEX idx_assets_excluded"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "isExcluded",
+          "median": 0.012195999999903506,
+          "p90": 0.015155999999933556,
+          "iters": 25,
+          "digest": "7cb6efb98ba5",
+          "plans": [
+            {
+              "sql": "SELECT excluded FROM assets WHERE id = ?",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "markedForSync()",
+          "median": 1.457772999999861,
+          "p90": 1.6454850000000079,
+          "iters": 25,
+          "digest": "203658b27008",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE supported = 1 AND excluded = 0 AND missing_since IS NULL AND status IN ('pending', 'failed') ORDER BY creation_time DESC, id DESC",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_marks (status=? AND excluded=? AND supported=?)",
+                "USE TEMP B-TREE FOR ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "markedForSync(auto retry)",
+          "median": 1.3880529999998998,
+          "p90": 1.5236879999999928,
+          "iters": 25,
+          "digest": "1634826d19dd",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE supported = 1 AND excluded = 0 AND missing_since IS NULL AND status IN ('pending', 'failed') AND NOT (status = 'failed' AND (failures",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_marks (status=? AND excluded=? AND supported=?)",
+                "USE TEMP B-TREE FOR ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "markedForSync(includeSynced)",
+          "median": 46.414683000000196,
+          "p90": 65.8978880000002,
+          "iters": 10,
+          "digest": "372a36101e4e",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE supported = 1 AND excluded = 0 AND missing_since IS NULL AND status IN ('pending', 'failed', 'synced') ORDER BY creation_time DESC, i",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_marks (status=? AND excluded=? AND supported=?)",
+                "USE TEMP B-TREE FOR ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(unmarked) page 1",
+          "median": 0.19868799999994735,
+          "p90": 0.21475099999997838,
+          "iters": 25,
+          "digest": "2e2fc503bd8f",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (supported = 1 AND excluded = 0 AND status = 'none') AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_status_creation (status=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(all) page 1",
+          "median": 0.20862299999998868,
+          "p90": 0.2611960000003819,
+          "iters": 25,
+          "digest": "04f8c2384a1f",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (1 = 1) AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SCAN assets USING INDEX idx_assets_creation",
+                "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(selected) page 1",
+          "median": 0.15297400000008565,
+          "p90": 0.213999000000058,
+          "iters": 25,
+          "digest": "65e4804cd9cd",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (selected = 1) AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_selected (selected=?)",
+                "USE TEMP B-TREE FOR ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(synced) page 1",
+          "median": 0.18362200000001394,
+          "p90": 0.20373399999971298,
+          "iters": 25,
+          "digest": "15a8a508ae3b",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (status = 'synced') AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_status_creation (status=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(failed) page 1",
+          "median": 0.19484600000032515,
+          "p90": 0.21901000000025306,
+          "iters": 25,
+          "digest": "4130c209ba45",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (status = 'failed') AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_status_creation (status=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(excluded) page 1",
+          "median": 0.20120799999995143,
+          "p90": 0.23346899999978632,
+          "iters": 25,
+          "digest": "6b68dd17d675",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (excluded = 1) AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SCAN assets USING INDEX idx_assets_excluded"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(unmarked) deep page",
+          "median": 0.22083500000007916,
+          "p90": 0.2711899999999332,
+          "iters": 25,
+          "digest": "28aa98d6e32a",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (supported = 1 AND excluded = 0 AND status = 'none') AND missing_since IS NULL AND (creation_time, id) < (?, ?) ORDER BY creation_tim",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_status_creation (status=? AND (creation_time,id)<(?,?))"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(all) deep page",
+          "median": 0.22826800000029834,
+          "p90": 0.27520400000003065,
+          "iters": 25,
+          "digest": "2e7aa2b73803",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (1 = 1) AND missing_since IS NULL AND (creation_time, id) < (?, ?) ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_creation (creation_time<?)",
+                "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(excluded) deep page",
+          "median": 0.2083519999996497,
+          "p90": 0.22213800000008632,
+          "iters": 25,
+          "digest": "af38da29bd98",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (excluded = 1) AND missing_since IS NULL AND (creation_time, id) < (?, ?) ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_excluded ((creation_time,id)<(?,?))"
+              ]
+            }
+          ]
+        }
+      ],
+      "scan": {
+        "name": "runScan (unchanged library)",
+        "median": 173.04445300000043,
+        "maxStatementMs": 6.032488000000285,
+        "tapDuringScan": {
+          "n": 41,
+          "median": 1.7568289999999251,
+          "max": 4.810734000000139
+        }
+      }
+    },
+    {
+      "n": 60000,
+      "indexes": [
+        "idx_assets_creation",
+        "idx_assets_excluded",
+        "idx_assets_marks",
+        "idx_assets_selected",
+        "idx_assets_status_creation",
+        "sqlite_autoindex_assets_1"
+      ],
+      "counts": {
+        "total": 59895,
+        "unmarked": 17838,
+        "selected": 40,
+        "synced": 35846,
+        "failed": 293,
+        "excluded": 4359,
+        "pending": 1459,
+        "backupReady": 1499
+      },
+      "results": [
+        {
+          "name": "libraryCounts",
+          "median": 4.045207000000119,
+          "p90": 4.150964999999815,
+          "iters": 25,
+          "digest": "c9e7daae4458",
+          "plans": [
+            {
+              "sql": "SELECT status, excluded, supported, selected, COUNT(*) AS n FROM assets WHERE missing_since IS NULL GROUP BY status, excluded, supported, selected",
+              "plan": [
+                "SCAN assets USING COVERING INDEX idx_assets_marks"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tap: setSelected (1 id)",
+          "median": 0.2448540000000321,
+          "p90": 0.30552200000011,
+          "iters": 25,
+          "digest": null,
+          "plans": [
+            {
+              "sql": "UPDATE assets SET selected = ? WHERE id IN (?)",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tap: toggle = setSelected+counts",
+          "median": 4.538908999999876,
+          "p90": 4.7688310000003185,
+          "iters": 25,
+          "digest": "c9e7daae4458",
+          "plans": [
+            {
+              "sql": "UPDATE assets SET selected = ? WHERE id IN (?)",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            },
+            {
+              "sql": "SELECT status, excluded, supported, selected, COUNT(*) AS n FROM assets WHERE missing_since IS NULL GROUP BY status, excluded, supported, selected",
+              "plan": [
+                "SCAN assets USING COVERING INDEX idx_assets_marks"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tap: setExcluded (won't upload)",
+          "median": 0.2906639999996514,
+          "p90": 0.34090699999978824,
+          "iters": 25,
+          "digest": null,
+          "plans": [
+            {
+              "sql": "UPDATE assets SET excluded = 1, selected = 0, error = NULL, status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'none' END WHERE id IN (?)",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "tap: markForUpload (1 id)",
+          "median": 0.27036699999962366,
+          "p90": 0.36601599999994505,
+          "iters": 25,
+          "digest": null,
+          "plans": [
+            {
+              "sql": "UPDATE assets SET selected = 0, excluded = 0, error = NULL, failures = 0, status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'pending' END WHERE id IN (?) ",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "excludeSelected (40 checked)",
+          "median": 1.6530614999996942,
+          "p90": 4.33361799999966,
+          "iters": 10,
+          "digest": "9a436e16693b",
+          "plans": [
+            {
+              "sql": "SELECT id FROM assets WHERE selected = 1",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_selected (selected=?)"
+              ]
+            },
+            {
+              "sql": "UPDATE assets SET excluded = 1, selected = 0, error = NULL, status = CASE WHEN status = 'synced' THEN 'synced' ELSE 'none' END WHERE selected = 1",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_selected (selected=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "settle: markStatus synced",
+          "median": 0.15693800000008196,
+          "p90": 0.21276099999977305,
+          "iters": 25,
+          "digest": null,
+          "plans": [
+            {
+              "sql": "UPDATE assets SET status = ?, error = ?, failed_at = ?, failures = 0 WHERE id = ? AND mtime = ?",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "excludedAssetIds (per drain batch)",
+          "median": 2.1880599999994956,
+          "p90": 2.3334560000002966,
+          "iters": 25,
+          "digest": "e829926f7433",
+          "plans": [
+            {
+              "sql": "SELECT id FROM assets WHERE excluded = 1",
+              "plan": [
+                "SCAN assets USING COVERING INDEX idx_assets_excluded"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "isExcluded",
+          "median": 0.014616999999816471,
+          "p90": 0.017443999999159132,
+          "iters": 25,
+          "digest": "7cb6efb98ba5",
+          "plans": [
+            {
+              "sql": "SELECT excluded FROM assets WHERE id = ?",
+              "plan": [
+                "SEARCH assets USING INDEX sqlite_autoindex_assets_1 (id=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "markedForSync()",
+          "median": 5.5528119999999035,
+          "p90": 7.050467000000026,
+          "iters": 25,
+          "digest": "38895eec2eec",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE supported = 1 AND excluded = 0 AND missing_since IS NULL AND status IN ('pending', 'failed') ORDER BY creation_time DESC, id DESC",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_marks (status=? AND excluded=? AND supported=?)",
+                "USE TEMP B-TREE FOR ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "markedForSync(auto retry)",
+          "median": 5.2583370000002105,
+          "p90": 6.461745999999948,
+          "iters": 25,
+          "digest": "e95952cb768e",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE supported = 1 AND excluded = 0 AND missing_since IS NULL AND status IN ('pending', 'failed') AND NOT (status = 'failed' AND (failures",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_marks (status=? AND excluded=? AND supported=?)",
+                "USE TEMP B-TREE FOR ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "markedForSync(includeSynced)",
+          "median": 169.0223645000001,
+          "p90": 217.33540999999968,
+          "iters": 10,
+          "digest": "6d1e0d96d2a2",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE supported = 1 AND excluded = 0 AND missing_since IS NULL AND status IN ('pending', 'failed', 'synced') ORDER BY creation_time DESC, i",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_marks (status=? AND excluded=? AND supported=?)",
+                "USE TEMP B-TREE FOR ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(unmarked) page 1",
+          "median": 0.1891700000005585,
+          "p90": 0.21595499999966705,
+          "iters": 25,
+          "digest": "01f84c5c1aa7",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (supported = 1 AND excluded = 0 AND status = 'none') AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_status_creation (status=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(all) page 1",
+          "median": 0.21319899999980407,
+          "p90": 0.24368199999935314,
+          "iters": 25,
+          "digest": "3bcd2b7ed320",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (1 = 1) AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SCAN assets USING INDEX idx_assets_creation",
+                "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(selected) page 1",
+          "median": 0.1541190000007191,
+          "p90": 0.17258700000002136,
+          "iters": 25,
+          "digest": "88ae0e355f40",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (selected = 1) AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_selected (selected=?)",
+                "USE TEMP B-TREE FOR ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(synced) page 1",
+          "median": 0.20117199999913282,
+          "p90": 0.26510099999995873,
+          "iters": 25,
+          "digest": "4b86065de0f2",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (status = 'synced') AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_status_creation (status=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(failed) page 1",
+          "median": 0.19040099999983795,
+          "p90": 0.20986199999970268,
+          "iters": 25,
+          "digest": "cfed262c180f",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (status = 'failed') AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_status_creation (status=?)"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(excluded) page 1",
+          "median": 0.1896259999994072,
+          "p90": 0.2132690000007642,
+          "iters": 25,
+          "digest": "4e40f86d8f74",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (excluded = 1) AND missing_since IS NULL ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SCAN assets USING INDEX idx_assets_excluded"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(unmarked) deep page",
+          "median": 0.1942959999996674,
+          "p90": 0.21286899999995512,
+          "iters": 25,
+          "digest": "1cd46378fb01",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (supported = 1 AND excluded = 0 AND status = 'none') AND missing_since IS NULL AND (creation_time, id) < (?, ?) ORDER BY creation_tim",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_status_creation (status=? AND (creation_time,id)<(?,?))"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(all) deep page",
+          "median": 0.2099659999994401,
+          "p90": 0.25308899999981804,
+          "iters": 25,
+          "digest": "e24167986f2e",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (1 = 1) AND missing_since IS NULL AND (creation_time, id) < (?, ?) ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_creation (creation_time<?)",
+                "USE TEMP B-TREE FOR LAST TERM OF ORDER BY"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "listAssets(excluded) deep page",
+          "median": 0.18749299999944924,
+          "p90": 0.20447899999999208,
+          "iters": 25,
+          "digest": "bb8a591f92ae",
+          "plans": [
+            {
+              "sql": "SELECT * FROM assets WHERE (excluded = 1) AND missing_since IS NULL AND (creation_time, id) < (?, ?) ORDER BY creation_time DESC, id DESC LIMIT ?",
+              "plan": [
+                "SEARCH assets USING INDEX idx_assets_excluded ((creation_time,id)<(?,?))"
+              ]
+            }
+          ]
+        }
+      ],
+      "scan": {
+        "name": "runScan (unchanged library)",
+        "median": 501.9624220000005,
+        "maxStatementMs": 6.335155000000668,
+        "tapDuringScan": {
+          "n": 121,
+          "median": 4.395432000001165,
+          "max": 7.952692999999272
+        }
+      }
+    }
+  ]
+}

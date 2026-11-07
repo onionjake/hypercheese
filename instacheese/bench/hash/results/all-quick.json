@@ -1,0 +1,314 @@
+{
+  "when": "2026-11-07T17:02:03.689Z",
+  "node": "v22.23.4",
+  "file": [
+    {
+      "variant": "before",
+      "lib": "js-sha256",
+      "size": 41943040,
+      "runs": [
+        {
+          "seconds": 0.7210514539999999,
+          "mbPerSec": 55.47454315236705,
+          "maxBlockMs": 321.601261,
+          "p95BlockMs": 321.601261,
+          "yields": 3,
+          "allocations": 3,
+          "maxAllocationBytes": 16777216,
+          "peakArrayBuffersMiB": 33.01866340637207
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 55.47454315236705,
+        "seconds": 0.7210514539999999,
+        "maxBlockMs": 321.601261,
+        "p95BlockMs": 321.601261,
+        "yields": 3,
+        "allocations": 3,
+        "maxAllocationBytes": 16777216,
+        "peakArrayBuffersMiB": 33.01866340637207
+      }
+    },
+    {
+      "variant": "before",
+      "lib": "js-sha256",
+      "size": 41943040,
+      "runs": [
+        {
+          "seconds": 14.99073984,
+          "mbPerSec": 2.668313934264101,
+          "maxBlockMs": 6019.574365,
+          "p95BlockMs": 6019.574365,
+          "yields": 3,
+          "allocations": 3,
+          "maxAllocationBytes": 16777216,
+          "peakArrayBuffersMiB": 41.018693923950195
+        }
+      ],
+      "jitless": true,
+      "median": {
+        "mbPerSec": 2.668313934264101,
+        "seconds": 14.99073984,
+        "maxBlockMs": 6019.574365,
+        "p95BlockMs": 6019.574365,
+        "yields": 3,
+        "allocations": 3,
+        "maxAllocationBytes": 16777216,
+        "peakArrayBuffersMiB": 41.018693923950195
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "js-sha256",
+      "size": 41943040,
+      "runs": [
+        {
+          "seconds": 0.690790998,
+          "mbPerSec": 57.90463413074181,
+          "maxBlockMs": 25.867580999999973,
+          "p95BlockMs": 25.83369300000004,
+          "yields": 27,
+          "allocations": 40,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 33.01866340637207
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 57.90463413074181,
+        "seconds": 0.690790998,
+        "maxBlockMs": 25.867580999999973,
+        "p95BlockMs": 25.83369300000004,
+        "yields": 27,
+        "allocations": 40,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 33.01866340637207
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "js-sha256",
+      "size": 8388608,
+      "runs": [
+        {
+          "seconds": 3.0198182019999997,
+          "mbPerSec": 2.649166097052355,
+          "maxBlockMs": 37.67642999999998,
+          "p95BlockMs": 36.59649899999977,
+          "yields": 85,
+          "allocations": 8,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 9.018693923950195
+        }
+      ],
+      "jitless": true,
+      "median": {
+        "mbPerSec": 2.649166097052355,
+        "seconds": 3.0198182019999997,
+        "maxBlockMs": 37.67642999999998,
+        "p95BlockMs": 36.59649899999977,
+        "yields": 85,
+        "allocations": 8,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 9.018693923950195
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "@noble/hashes",
+      "size": 41943040,
+      "runs": [
+        {
+          "seconds": 0.259511414,
+          "mbPerSec": 154.13580228883498,
+          "maxBlockMs": 25.353346000000002,
+          "p95BlockMs": 25.353346000000002,
+          "yields": 10,
+          "allocations": 40,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 32.01872444152832
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 154.13580228883498,
+        "seconds": 0.259511414,
+        "maxBlockMs": 25.353346000000002,
+        "p95BlockMs": 25.353346000000002,
+        "yields": 10,
+        "allocations": 40,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 32.01872444152832
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "@noble/hashes",
+      "size": 8388608,
+      "runs": [
+        {
+          "seconds": 5.327768643,
+          "mbPerSec": 1.5015667038228033,
+          "maxBlockMs": 48.99675800000023,
+          "p95BlockMs": 42.9972700000003,
+          "yields": 129,
+          "allocations": 8,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 9.01872444152832
+        }
+      ],
+      "jitless": true,
+      "median": {
+        "mbPerSec": 1.5015667038228033,
+        "seconds": 5.327768643,
+        "maxBlockMs": 48.99675800000023,
+        "p95BlockMs": 42.9972700000003,
+        "yields": 129,
+        "allocations": 8,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 9.01872444152832
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "node-forge",
+      "size": 41943040,
+      "runs": [
+        {
+          "seconds": 0.9947820580000001,
+          "mbPerSec": 40.209812469295656,
+          "maxBlockMs": 25.826585999999992,
+          "p95BlockMs": 25.821654999999964,
+          "yields": 38,
+          "allocations": 40,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 41.01866340637207
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 40.209812469295656,
+        "seconds": 0.9947820580000001,
+        "maxBlockMs": 25.826585999999992,
+        "p95BlockMs": 25.821654999999964,
+        "yields": 38,
+        "allocations": 40,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 41.01866340637207
+      }
+    },
+    {
+      "variant": "after",
+      "lib": "node-forge",
+      "size": 8388608,
+      "runs": [
+        {
+          "seconds": 3.430438885,
+          "mbPerSec": 2.3320631173407422,
+          "maxBlockMs": 37.93882699999995,
+          "p95BlockMs": 28.748699000000016,
+          "yields": 126,
+          "allocations": 8,
+          "maxAllocationBytes": 1048576,
+          "peakArrayBuffersMiB": 9.01866340637207
+        }
+      ],
+      "jitless": true,
+      "median": {
+        "mbPerSec": 2.3320631173407422,
+        "seconds": 3.430438885,
+        "maxBlockMs": 37.93882699999995,
+        "p95BlockMs": 28.748699000000016,
+        "yields": 126,
+        "allocations": 8,
+        "maxAllocationBytes": 1048576,
+        "peakArrayBuffersMiB": 9.01866340637207
+      }
+    }
+  ],
+  "libs": [
+    {
+      "lib": "js-sha256",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": false,
+      "mbPerSec": 50.13154328965919,
+      "rates": [
+        50.13154328965919
+      ]
+    },
+    {
+      "lib": "js-sha256",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": true,
+      "mbPerSec": 2.764547278446097,
+      "rates": [
+        2.764547278446097
+      ]
+    },
+    {
+      "lib": "@noble/hashes",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": false,
+      "mbPerSec": 134.36120551292086,
+      "rates": [
+        134.36120551292086
+      ]
+    },
+    {
+      "lib": "@noble/hashes",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": true,
+      "mbPerSec": 1.5519241371372121,
+      "rates": [
+        1.5519241371372121
+      ]
+    },
+    {
+      "lib": "node-forge",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": false,
+      "mbPerSec": 34.95958139257402,
+      "rates": [
+        34.95958139257402
+      ]
+    },
+    {
+      "lib": "node-forge",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": true,
+      "mbPerSec": 2.301717133230369,
+      "rates": [
+        2.301717133230369
+      ]
+    },
+    {
+      "lib": "node:crypto",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": false,
+      "mbPerSec": 1167.6357070004974,
+      "rates": [
+        1167.6357070004974
+      ],
+      "oneShot24MiBMs": 32.69567400000001
+    },
+    {
+      "lib": "node:crypto",
+      "size": 4194304,
+      "runs": 1,
+      "jitless": true,
+      "mbPerSec": 1241.310439017359,
+      "rates": [
+        1241.310439017359
+      ],
+      "oneShot24MiBMs": 30.656036
+    }
+  ]
+}

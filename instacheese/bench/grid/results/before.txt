@@ -1,0 +1,11 @@
+
+before (HEAD a112239): 1080 assets loaded, 333 cells mounted (111 rows), scrolled to row 180
+
+noop (harness floor)         busy     0.02ms  render        0ms  commits   0  screen   0  rows    0  cells    0  images    0  icons    0  host     0
+item event, visible asset    busy     7.47ms  render     3.36ms  commits   2  screen   1  rows  111  cells  333  images  333  icons    0  host  1303
+item event, asset not loaded busy     7.55ms  render     3.42ms  commits   2  screen   1  rows  111  cells  333  images  333  icons    0  host  1303
+'checking' burst x200        busy    11.94ms  render     6.88ms  commits   2  screen   1  rows  111  cells  333  images  333  icons    0  host  1502
+summary change only          busy     8.46ms  render     3.98ms  commits   2  screen   1  rows  111  cells  333  images  333  icons    0  host  1503
+one file upload cycle        busy    43.01ms  render    16.78ms  commits   8  screen   6  rows  555  cells 1665  images 1665  icons    2  host  7517
+tap (select toggle)          busy    16.32ms  render     6.10ms  commits   3  screen   2  rows  222  cells  666  images  666  icons    1  host  3010
+won't upload (long-press)    busy    17.37ms  render     5.89ms  commits   3  screen   2  rows  222  cells  666  images  666  icons    1  host  3007
