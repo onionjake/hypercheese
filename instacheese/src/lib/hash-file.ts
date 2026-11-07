@@ -1,16 +1,15 @@
-import { sha256 } from '@noble/hashes/sha2.js';
-import { bytesToHex } from '@noble/hashes/utils.js';
+import { sha256 } from 'js-sha256';
 
-// Time-sliced SHA-256 of a big file read in chunks.
-// Kept free of Expo/React Native imports so bench/hash/ can run this exact
-// code under Node and check it against node:crypto (the server compares the
-// SHA-256 we send: a wrong hash fails every big upload).
+// Time-sliced SHA-256 of a big file read in chunks. Kept free of Expo/React
+// Native imports so bench/hash/ can run this exact code under Node and check
+// it against node:crypto (the server compares the SHA-256 we send: a wrong
+// hash fails every big upload).
 //
-// expo-file-system's FileHandle.readBytes allocates a fresh buffer per call
-// (there is no read-into-buffer API); since SDK 58 it is async (the read runs
-// off the JS thread; readBytesSync is the old blocking call). The hash itself
-// is pure JS (Hermes has no JIT; no native
-// streaming SHA-256 is available — expo-crypto only digests a whole buffer).
+// Since Expo SDK 58 the app hashes files natively with expo-file-system's
+// File.digest('SHA-256') (upload-protocol.ts, sha256OfFile); this loop is
+// only the fallback for when that is unavailable or fails.
+//
+// The hash here is pure JS (Hermes has no JIT), so it runs on the JS thread.
 // The old loop read and hashed 16 MB at a time between yields, freezing the
 // JS thread for seconds per chunk on a phone. Now each uninterrupted stretch
 // is short: modest reads, hashed in small slices, yielding once the stretch
@@ -32,11 +31,12 @@ export interface HashSlicing {
   budgetMs: number;
 }
 
-// The hash is @noble/hashes (~3x js-sha256 under a JIT; bench/hash). Its
-// interpreter speed (node --jitless, a stand-in for Hermes) was lower in the
-// bench, but the stretch length is bounded by budgetMs, not by the library:
-// a slower hash just yields more often. The upload log records MB/s per file
-// so the real Hermes speed shows up in a debug export.
+// The hash is js-sha256. Measured on real Hermes (release APK on an Android
+// emulator; bench/hash/RESULTS.md, "Android emulator, Hermes (measured)"):
+// js-sha256 4.8 MB/s vs @noble/hashes 2.7 MB/s in memory, and 45.5 s vs
+// 68.4 s through this loop for a 128 MiB file. noble's ~3x lead exists only
+// under a JIT, which Hermes doesn't have. No maintained pure-JS library beat
+// js-sha256 by more than ~15% there.
 export const DEFAULT_HASH_SLICING: HashSlicing = {
   readSize: 1024 * 1024,
   sliceSize: 16 * 1024,
@@ -46,18 +46,10 @@ export const DEFAULT_HASH_SLICING: HashSlicing = {
 export interface Sha256OfReaderOptions {
   now?: () => number;
   slicing?: HashSlicing;
-  // Benchmarks swap in other libraries. The app uses @noble/hashes, whose
-  // 64-bit length encoding keeps files over 4 GiB correct (bench/hash
+  // Benchmarks swap in other libraries; the app always uses js-sha256, whose
+  // 64-bit byte counter (hBytes) keeps files over 4 GiB correct (bench/hash
   // equivalence covers a 4 GiB+ file).
   createHash?: () => IncrementalHash;
-}
-
-function nobleSha256(): IncrementalHash {
-  const h = sha256.create();
-  return {
-    update: (data) => h.update(data),
-    hex: () => bytesToHex(h.digest()),
-  };
 }
 
 export async function sha256OfReader(
@@ -76,7 +68,7 @@ export async function sha256OfReader(
 ): Promise<string> {
   const now = options.now ?? Date.now;
   const { readSize, sliceSize, budgetMs } = options.slicing ?? DEFAULT_HASH_SLICING;
-  const hash = (options.createHash ?? nobleSha256)();
+  const hash = (options.createHash ?? (() => sha256.create()))();
   let read = 0;
   let stretchStart = now();
   while (read < size) {
