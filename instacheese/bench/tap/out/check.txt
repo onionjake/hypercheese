@@ -1,0 +1,110 @@
+ok   seed 1: libraryCounts equal {"total":1698,"unmarked":311,"selected":240,"synced":415,"failed":425,"excluded":342,"pending":619,"backupReady":750}
+ok   seed 1: listAssets(unmarked, 7) paged identically (311 rows)
+ok   seed 1: listAssets(unmarked, 60) paged identically (311 rows)
+ok   seed 1: listAssets(all, 7) paged identically (1698 rows)
+ok   seed 1: listAssets(all, 60) paged identically (1698 rows)
+ok   seed 1: listAssets(selected, 7) paged identically (240 rows)
+ok   seed 1: listAssets(selected, 60) paged identically (240 rows)
+ok   seed 1: listAssets(synced, 7) paged identically (415 rows)
+ok   seed 1: listAssets(synced, 60) paged identically (415 rows)
+ok   seed 1: listAssets(failed, 7) paged identically (425 rows)
+ok   seed 1: listAssets(failed, 60) paged identically (425 rows)
+ok   seed 1: listAssets(excluded, 7) paged identically (342 rows)
+ok   seed 1: listAssets(excluded, 60) paged identically (342 rows)
+ok   seed 1: excludedAssetIds equal (361)
+ok   seed 1: markedForSync({}) equal
+ok   seed 1: markedForSync({"includeSynced":true}) equal
+ok   seed 1: markedForSync({"failedRetryAfterMs":3600000}) equal
+ok   seed 2: libraryCounts equal {"total":1989,"unmarked":356,"selected":319,"synced":520,"failed":469,"excluded":424,"pending":691,"backupReady":875}
+ok   seed 2: listAssets(unmarked, 7) paged identically (356 rows)
+ok   seed 2: listAssets(unmarked, 60) paged identically (356 rows)
+ok   seed 2: listAssets(all, 7) paged identically (1989 rows)
+ok   seed 2: listAssets(all, 60) paged identically (1989 rows)
+ok   seed 2: listAssets(selected, 7) paged identically (319 rows)
+ok   seed 2: listAssets(selected, 60) paged identically (319 rows)
+ok   seed 2: listAssets(synced, 7) paged identically (520 rows)
+ok   seed 2: listAssets(synced, 60) paged identically (520 rows)
+ok   seed 2: listAssets(failed, 7) paged identically (469 rows)
+ok   seed 2: listAssets(failed, 60) paged identically (469 rows)
+ok   seed 2: listAssets(excluded, 7) paged identically (424 rows)
+ok   seed 2: listAssets(excluded, 60) paged identically (424 rows)
+ok   seed 2: excludedAssetIds equal (440)
+ok   seed 2: markedForSync({}) equal
+ok   seed 2: markedForSync({"includeSynced":true}) equal
+ok   seed 2: markedForSync({"failedRetryAfterMs":3600000}) equal
+ok   seed 3: libraryCounts equal {"total":2283,"unmarked":426,"selected":354,"synced":558,"failed":585,"excluded":466,"pending":814,"backupReady":1017}
+ok   seed 3: listAssets(unmarked, 7) paged identically (426 rows)
+ok   seed 3: listAssets(unmarked, 60) paged identically (426 rows)
+ok   seed 3: listAssets(all, 7) paged identically (2283 rows)
+ok   seed 3: listAssets(all, 60) paged identically (2283 rows)
+ok   seed 3: listAssets(selected, 7) paged identically (354 rows)
+ok   seed 3: listAssets(selected, 60) paged identically (354 rows)
+ok   seed 3: listAssets(synced, 7) paged identically (558 rows)
+ok   seed 3: listAssets(synced, 60) paged identically (558 rows)
+ok   seed 3: listAssets(failed, 7) paged identically (585 rows)
+ok   seed 3: listAssets(failed, 60) paged identically (585 rows)
+ok   seed 3: listAssets(excluded, 7) paged identically (466 rows)
+ok   seed 3: listAssets(excluded, 60) paged identically (466 rows)
+ok   seed 3: excludedAssetIds equal (488)
+ok   seed 3: markedForSync({}) equal
+ok   seed 3: markedForSync({"includeSynced":true}) equal
+ok   seed 3: markedForSync({"failedRetryAfterMs":3600000}) equal
+ok   seed 4: libraryCounts equal {"total":2575,"unmarked":428,"selected":413,"synced":628,"failed":667,"excluded":538,"pending":965,"backupReady":1189}
+ok   seed 4: listAssets(unmarked, 7) paged identically (428 rows)
+ok   seed 4: listAssets(unmarked, 60) paged identically (428 rows)
+ok   seed 4: listAssets(all, 7) paged identically (2575 rows)
+ok   seed 4: listAssets(all, 60) paged identically (2575 rows)
+ok   seed 4: listAssets(selected, 7) paged identically (413 rows)
+ok   seed 4: listAssets(selected, 60) paged identically (413 rows)
+ok   seed 4: listAssets(synced, 7) paged identically (628 rows)
+ok   seed 4: listAssets(synced, 60) paged identically (628 rows)
+ok   seed 4: listAssets(failed, 7) paged identically (667 rows)
+ok   seed 4: listAssets(failed, 60) paged identically (667 rows)
+ok   seed 4: listAssets(excluded, 7) paged identically (538 rows)
+ok   seed 4: listAssets(excluded, 60) paged identically (538 rows)
+ok   seed 4: excludedAssetIds equal (557)
+ok   seed 4: markedForSync({}) equal
+ok   seed 4: markedForSync({"includeSynced":true}) equal
+ok   seed 4: markedForSync({"failedRetryAfterMs":3600000}) equal
+ok   seed 5: libraryCounts equal {"total":2856,"unmarked":524,"selected":435,"synced":714,"failed":721,"excluded":610,"pending":984,"backupReady":1229}
+ok   seed 5: listAssets(unmarked, 7) paged identically (524 rows)
+ok   seed 5: listAssets(unmarked, 60) paged identically (524 rows)
+ok   seed 5: listAssets(all, 7) paged identically (2856 rows)
+ok   seed 5: listAssets(all, 60) paged identically (2856 rows)
+ok   seed 5: listAssets(selected, 7) paged identically (435 rows)
+ok   seed 5: listAssets(selected, 60) paged identically (435 rows)
+ok   seed 5: listAssets(synced, 7) paged identically (714 rows)
+ok   seed 5: listAssets(synced, 60) paged identically (714 rows)
+ok   seed 5: listAssets(failed, 7) paged identically (721 rows)
+ok   seed 5: listAssets(failed, 60) paged identically (721 rows)
+ok   seed 5: listAssets(excluded, 7) paged identically (610 rows)
+ok   seed 5: listAssets(excluded, 60) paged identically (610 rows)
+ok   seed 5: excludedAssetIds equal (639)
+ok   seed 5: markedForSync({}) equal
+ok   seed 5: markedForSync({"includeSynced":true}) equal
+ok   seed 5: markedForSync({"failedRetryAfterMs":3600000}) equal
+ok   seed 6: libraryCounts equal {"total":3151,"unmarked":598,"selected":486,"synced":792,"failed":770,"excluded":619,"pending":1108,"backupReady":1360}
+ok   seed 6: listAssets(unmarked, 7) paged identically (598 rows)
+ok   seed 6: listAssets(unmarked, 60) paged identically (598 rows)
+ok   seed 6: listAssets(all, 7) paged identically (3151 rows)
+ok   seed 6: listAssets(all, 60) paged identically (3151 rows)
+ok   seed 6: listAssets(selected, 7) paged identically (486 rows)
+ok   seed 6: listAssets(selected, 60) paged identically (486 rows)
+ok   seed 6: listAssets(synced, 7) paged identically (792 rows)
+ok   seed 6: listAssets(synced, 60) paged identically (792 rows)
+ok   seed 6: listAssets(failed, 7) paged identically (770 rows)
+ok   seed 6: listAssets(failed, 60) paged identically (770 rows)
+ok   seed 6: listAssets(excluded, 7) paged identically (619 rows)
+ok   seed 6: listAssets(excluded, 60) paged identically (619 rows)
+ok   seed 6: excludedAssetIds equal (653)
+ok   seed 6: markedForSync({}) equal
+ok   seed 6: markedForSync({"includeSynced":true}) equal
+ok   seed 6: markedForSync({"failedRetryAfterMs":3600000}) equal
+ok   empty catalog: all counts 0
+ok   baseline catalog has idx_assets_creation, idx_assets_selected, idx_assets_status
+ok   upgraded 60k catalog indexes: idx_assets_creation, idx_assets_excluded, idx_assets_marks, idx_assets_selected, idx_assets_status_creation (first open incl. index build 73 ms on this machine)
+ok   upgraded catalog: counts unchanged
+ok   second open of the upgraded catalog: 4.9 ms
+ok   pre-"won't upload" catalog migrates: {"total":3,"unmarked":1,"selected":1,"synced":1,"failed":0,"excluded":0,"pending":1,"backupReady":2}; indexes idx_assets_creation, idx_assets_excluded, idx_assets_marks, idx_assets_selected, idx_assets_status_creation
+
+all checks passed

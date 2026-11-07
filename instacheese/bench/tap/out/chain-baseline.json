@@ -9,6 +9,10 @@
       "Notifications.setNotificationChannelAsync": 5,
       "Notifications.scheduleNotificationAsync": 30,
       "FileSystem.readAsStringAsync": 3,
+      "FileSystem.writeAsStringAsync": 5,
+      "SecureStore.deleteValueWithKeyAsync": 15,
+      "Notifications.requestPermissionsAsync": 3,
+      "MediaLibrary.getAssetsAsync": 250,
       "sql.write": 1,
       "queue.removeQueued": 2
     },
@@ -19,6 +23,10 @@
       "Notifications.setNotificationChannelAsync": 20,
       "Notifications.scheduleNotificationAsync": 120,
       "FileSystem.readAsStringAsync": 12,
+      "FileSystem.writeAsStringAsync": 20,
+      "SecureStore.deleteValueWithKeyAsync": 60,
+      "Notifications.requestPermissionsAsync": 12,
+      "MediaLibrary.getAssetsAsync": 1000,
       "sql.write": 4,
       "queue.removeQueued": 8
     }
@@ -34,6 +42,8 @@
       "nativeCalls": 6,
       "settleMs": 161.3542131570913,
       "nativeBusyMs": 79.92625312521122,
+      "reminderLagMs": 161.3542131570913,
+      "tapMedianMs": 82.96773419937118,
       "signOutCancelMs": null,
       "callsByName": {
         "FileSystem.readAsStringAsync": 1,
@@ -54,6 +64,8 @@
       "nativeCalls": 5,
       "settleMs": 145.02437819662038,
       "nativeBusyMs": 74.58083324725742,
+      "reminderLagMs": 145.02437819662038,
+      "tapMedianMs": 69.00941980185453,
       "signOutCancelMs": null,
       "callsByName": {
         "Notifications.cancelScheduledNotificationAsync": 1,
@@ -73,6 +85,8 @@
       "nativeCalls": 120,
       "settleMs": 5855.259775725548,
       "nativeBusyMs": 1859.2138142558738,
+      "reminderLagMs": 1105.259775725548,
+      "tapMedianMs": 74.52447819831332,
       "signOutCancelMs": null,
       "callsByName": {
         "Notifications.cancelScheduledNotificationAsync": 24,
@@ -92,6 +106,8 @@
       "nativeCalls": 120,
       "settleMs": 5857.128411040167,
       "nativeBusyMs": 1844.3843279111206,
+      "reminderLagMs": 1107.1284110401666,
+      "tapMedianMs": 82.66548797616474,
       "signOutCancelMs": null,
       "callsByName": {
         "Notifications.cancelScheduledNotificationAsync": 24,
@@ -107,11 +123,36 @@
     },
     {
       "profile": "nominal",
-      "scenario": "20 taps in 1 s (alternating toggle / won't upload), then sign-out",
-      "nativeCalls": 71,
-      "settleMs": null,
-      "nativeBusyMs": null,
+      "scenario": "20 won't-upload in 5 s during a library scan",
+      "nativeCalls": 100,
+      "settleMs": 6614.215422227375,
+      "nativeBusyMs": 1559.1953642205797,
+      "reminderLagMs": 1864.2154222273748,
+      "tapMedianMs": 79.13754802445885,
       "signOutCancelMs": null,
+      "callsByName": {
+        "MediaLibrary.getAssetsAsync": 20,
+        "Notifications.cancelScheduledNotificationAsync": 20,
+        "Notifications.getPermissionsAsync": 20,
+        "Notifications.scheduleNotificationAsync": 20,
+        "Notifications.setNotificationChannelAsync": 20,
+        "SecureStore.getValueWithKeyAsync": 20,
+        "sql.libraryCounts": 20,
+        "sql.scanPage": 20,
+        "sql.write": 20
+      },
+      "allCorrect": true,
+      "violations": []
+    },
+    {
+      "profile": "nominal",
+      "scenario": "20 taps in 1 s (alternating toggle / won't upload), then sign-out",
+      "nativeCalls": 70,
+      "settleMs": 1680.6994148621054,
+      "nativeBusyMs": 1125.3834750146136,
+      "reminderLagMs": 730.6994148621054,
+      "tapMedianMs": 297.5295006957137,
+      "signOutCancelMs": 74.8510456548538,
       "callsByName": {
         "Notifications.cancelScheduledNotificationAsync": 13,
         "Notifications.getPermissionsAsync": 12,
@@ -122,10 +163,8 @@
         "sql.libraryCounts": 21,
         "sql.write": 20
       },
-      "allCorrect": false,
-      "violations": [
-        "scheduled while signed out"
-      ]
+      "allCorrect": true,
+      "violations": []
     },
     {
       "profile": "congested",
@@ -133,6 +172,8 @@
       "nativeCalls": 6,
       "settleMs": 389.7464867206662,
       "nativeBusyMs": 319.7050125008448,
+      "reminderLagMs": 389.7464867206662,
+      "tapMedianMs": 85.22845499369315,
       "signOutCancelMs": null,
       "callsByName": {
         "FileSystem.readAsStringAsync": 1,
@@ -153,6 +194,8 @@
       "nativeCalls": 5,
       "settleMs": 381.67107523731426,
       "nativeBusyMs": 298.32333298902955,
+      "reminderLagMs": 381.67107523731426,
+      "tapMedianMs": 71.21414726262446,
       "signOutCancelMs": null,
       "callsByName": {
         "Notifications.cancelScheduledNotificationAsync": 1,
@@ -172,6 +215,8 @@
       "nativeCalls": 120,
       "settleMs": 7523.404104103637,
       "nativeBusyMs": 7432.607261316106,
+      "reminderLagMs": 2773.404104103637,
+      "tapMedianMs": 75.28126393954739,
       "signOutCancelMs": null,
       "callsByName": {
         "Notifications.cancelScheduledNotificationAsync": 24,
@@ -191,6 +236,8 @@
       "nativeCalls": 120,
       "settleMs": 7633.477790222643,
       "nativeBusyMs": 7549.010501491651,
+      "reminderLagMs": 2883.4777902226433,
+      "tapMedianMs": 81.1862442096251,
       "signOutCancelMs": null,
       "callsByName": {
         "Notifications.cancelScheduledNotificationAsync": 24,
@@ -206,11 +253,36 @@
     },
     {
       "profile": "congested",
-      "scenario": "20 taps in 1 s (alternating toggle / won't upload), then sign-out",
-      "nativeCalls": 35,
-      "settleMs": null,
-      "nativeBusyMs": null,
+      "scenario": "20 won't-upload in 5 s during a library scan",
+      "nativeCalls": 100,
+      "settleMs": 12369.228870733828,
+      "nativeBusyMs": 6282.95951921828,
+      "reminderLagMs": 7619.228870733828,
+      "tapMedianMs": 84.79480229507226,
       "signOutCancelMs": null,
+      "callsByName": {
+        "MediaLibrary.getAssetsAsync": 6,
+        "Notifications.cancelScheduledNotificationAsync": 20,
+        "Notifications.getPermissionsAsync": 20,
+        "Notifications.scheduleNotificationAsync": 20,
+        "Notifications.setNotificationChannelAsync": 20,
+        "SecureStore.getValueWithKeyAsync": 20,
+        "sql.libraryCounts": 20,
+        "sql.scanPage": 6,
+        "sql.write": 20
+      },
+      "allCorrect": true,
+      "violations": []
+    },
+    {
+      "profile": "congested",
+      "scenario": "20 taps in 1 s (alternating toggle / won't upload), then sign-out",
+      "nativeCalls": 34,
+      "settleMs": 2474.1620023182827,
+      "nativeBusyMs": 2226.0913533449175,
+      "reminderLagMs": 1524.1620023182825,
+      "tapMedianMs": 335.0759322485096,
+      "signOutCancelMs": 752.823061933741,
       "callsByName": {
         "Notifications.cancelScheduledNotificationAsync": 4,
         "Notifications.getPermissionsAsync": 3,
@@ -221,10 +293,8 @@
         "sql.libraryCounts": 21,
         "sql.write": 20
       },
-      "allCorrect": false,
-      "violations": [
-        "scheduled while signed out"
-      ]
+      "allCorrect": true,
+      "violations": []
     }
   ]
 }

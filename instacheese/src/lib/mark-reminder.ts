@@ -37,12 +37,18 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// Once per process: re-creating an existing channel changes nothing (Android
+// ignores an app's later importance changes) but still costs an IPC to the
+// notification service on every schedule. Nothing in the app deletes it, and
+// users can only disable a channel, not remove it.
+let channelReady = false;
 async function ensureChannel(): Promise<void> {
-  if (Platform.OS !== 'android') return;
+  if (Platform.OS !== 'android' || channelReady) return;
   await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
     name: 'Nightly mark reminder',
     importance: Notifications.AndroidImportance.DEFAULT,
   });
+  channelReady = true;
 }
 
 // Schedule changes run one at a time, in call order. Each refresh is a

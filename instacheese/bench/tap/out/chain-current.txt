@@ -1,0 +1,30 @@
+
+[current] profile: nominal
+  1 toggle (cold: first refresh since app start)                     native calls    6  native busy    80 ms  reminder idle    92 ms after last tap  tap->counts 14 ms  final state OK
+      {"FileSystem.readAsStringAsync":1,"Notifications.cancelScheduledNotificationAsync":1,"Notifications.getPermissionsAsync":1,"Notifications.scheduleNotificationAsync":1,"Notifications.setNotificationChannelAsync":1,"SecureStore.getValueWithKeyAsync":1,"sql.libraryCounts":1,"sql.write":1}
+  1 toggle (warm: reminder already scheduled)                        native calls    0  native busy     0 ms  reminder idle     0 ms after last tap  tap->counts 12 ms  final state OK
+      {"sql.libraryCounts":1,"sql.write":1}
+  20 toggles in 5 s + uploads settling every 1.5 s                   native calls    0  native busy     0 ms  reminder idle     0 ms after last tap  tap->counts 13 ms  final state OK
+      {"sql.libraryCounts":24,"sql.write":20}
+  20 won't-upload in 5 s + uploads settling every 1.5 s              native calls   80  native busy  1441 ms  reminder idle    84 ms after last tap  tap->counts 14 ms  final state OK
+      {"Notifications.cancelScheduledNotificationAsync":20,"Notifications.getPermissionsAsync":20,"Notifications.scheduleNotificationAsync":20,"SecureStore.getValueWithKeyAsync":20,"sql.libraryCounts":24,"sql.write":20}
+  20 won't-upload in 5 s during a library scan                       native calls   52  native busy   966 ms  reminder idle   820 ms after last tap  tap->counts 15 ms  final state OK
+      {"MediaLibrary.getAssetsAsync":21,"Notifications.cancelScheduledNotificationAsync":13,"Notifications.getPermissionsAsync":13,"Notifications.scheduleNotificationAsync":13,"SecureStore.getValueWithKeyAsync":13,"sql.libraryCounts":20,"sql.scanPage":21,"sql.write":20}
+  20 taps in 1 s (alternating toggle / won't upload), then sign-out  native calls   42  native busy   779 ms  reminder idle   651 ms after last tap  tap->counts 14 ms  sign-out cancel 54 ms  final state OK
+      {"Notifications.cancelScheduledNotificationAsync":11,"Notifications.getPermissionsAsync":10,"Notifications.scheduleNotificationAsync":10,"SecureStore.deleteValueWithKeyAsync":1,"SecureStore.getValueWithKeyAsync":11,"sql.libraryCounts":21,"sql.write":20}
+
+[current] profile: congested
+  1 toggle (cold: first refresh since app start)                     native calls    6  native busy   320 ms  reminder idle   335 ms after last tap  tap->counts 17 ms  final state OK
+      {"FileSystem.readAsStringAsync":1,"Notifications.cancelScheduledNotificationAsync":1,"Notifications.getPermissionsAsync":1,"Notifications.scheduleNotificationAsync":1,"Notifications.setNotificationChannelAsync":1,"SecureStore.getValueWithKeyAsync":1,"sql.libraryCounts":1,"sql.write":1}
+  1 toggle (warm: reminder already scheduled)                        native calls    0  native busy     0 ms  reminder idle     0 ms after last tap  tap->counts 14 ms  final state OK
+      {"sql.libraryCounts":1,"sql.write":1}
+  20 toggles in 5 s + uploads settling every 1.5 s                   native calls    0  native busy     0 ms  reminder idle     0 ms after last tap  tap->counts 16 ms  final state OK
+      {"sql.libraryCounts":24,"sql.write":20}
+  20 won't-upload in 5 s + uploads settling every 1.5 s              native calls   72  native busy  5251 ms  reminder idle   523 ms after last tap  tap->counts 23 ms  final state OK
+      {"Notifications.cancelScheduledNotificationAsync":18,"Notifications.getPermissionsAsync":18,"Notifications.scheduleNotificationAsync":18,"SecureStore.getValueWithKeyAsync":18,"sql.libraryCounts":24,"sql.write":20}
+  20 won't-upload in 5 s during a library scan                       native calls   12  native busy   879 ms  reminder idle  2496 ms after last tap  tap->counts 24 ms  final state OK
+      {"MediaLibrary.getAssetsAsync":6,"Notifications.cancelScheduledNotificationAsync":3,"Notifications.getPermissionsAsync":3,"Notifications.scheduleNotificationAsync":3,"SecureStore.getValueWithKeyAsync":3,"sql.libraryCounts":20,"sql.scanPage":6,"sql.write":20}
+  20 taps in 1 s (alternating toggle / won't upload), then sign-out  native calls   18  native busy  1347 ms  reminder idle   981 ms after last tap  tap->counts 20 ms  sign-out cancel 220 ms  final state OK
+      {"Notifications.cancelScheduledNotificationAsync":5,"Notifications.getPermissionsAsync":4,"Notifications.scheduleNotificationAsync":4,"SecureStore.deleteValueWithKeyAsync":1,"SecureStore.getValueWithKeyAsync":5,"sql.libraryCounts":21,"sql.write":20}
+
+wrote bench/tap/out/chain-current.json

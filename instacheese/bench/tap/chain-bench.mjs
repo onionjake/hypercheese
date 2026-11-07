@@ -22,6 +22,7 @@ import path from 'node:path';
 import { rng } from './lib/catalog.mjs';
 import { APP_DIR, loadTs, median, parseArgs } from './lib/load-ts.mjs';
 
+process.removeAllListeners('warning');
 const args = parseArgs(process.argv.slice(2));
 const impl = args.impl ?? 'current';
 const RUNS = Number(args.runs ?? 7);
@@ -99,12 +100,16 @@ function makeWorld(seed, profileName) {
 
   let nativeTail = Promise.resolve();
   let nativeBusy = 0;
+  let lastReminderCallEnd = 0;
   function native(name, effect) {
     calls[name] = (calls[name] ?? 0) + 1;
     const run = nativeTail.then(async () => {
       const t0 = clock.now;
       await clock.sleep(jitter(profile[name]));
-      nativeBusy += clock.now - t0;
+      if (!name.startsWith('MediaLibrary.')) {
+        nativeBusy += clock.now - t0;
+        lastReminderCallEnd = clock.now;
+      }
       return effect?.();
     });
     nativeTail = run.catch(() => {});
@@ -202,12 +207,17 @@ function makeWorld(seed, profileName) {
       return clock.now - t0;
     },
   };
-  return { clock, calls, os, state, reminder, lib, native, sql, nativeBusy: () => nativeBusy };
+  return {
+    clock, calls, os, state, reminder, lib, native, sql, tapLatency,
+    nativeBusy: () => nativeBusy,
+    lastReminderCallEnd: () => lastReminderCallEnd,
+  };
 }
 
 // ---- scenarios ----------------------------------------------------------
 // Each returns metrics after letting everything settle.
 const SCENARIOS = {
+  // (sign-out's own SecureStore delete is not counted as a reminder call)
   '1 toggle (cold: first refresh since app start)': async (w) => {
     w.clock.at(0, () => w.lib.toggle());
   },
@@ -281,7 +291,7 @@ async function runScenario(name, fn, seed, profileName) {
     if (d) delta[k] = d;
   }
   const nativeCalls = Object.entries(delta)
-    .filter(([k]) => !k.startsWith('sql.'))
+    .filter(([k]) => !k.startsWith('sql.') && !k.startsWith('MediaLibrary.') && !k.includes('deleteValue'))
     .reduce((a, [, v]) => a + v, 0);
   const expectedBody = w.expectNothingScheduled
     ? undefined
@@ -293,6 +303,9 @@ async function runScenario(name, fn, seed, profileName) {
     nativeCalls,
     calls: delta,
     settleMs: lastActivity.t - markT, // until every queued native/SQL call has finished
+    // From the last tap until the reminder's last native call finished.
+    reminderLagMs: Math.max(0, w.lastReminderCallEnd() - w.lib.lastTap),
+    tapMedianMs: w.tapLatency.length ? median(w.tapLatency) : null,
     nativeBusyMs: w.nativeBusy() - markBusy,
     signOutCancelMs: w.metrics.signOutCancelMs,
     correct: finalBody === expectedBody && w.os.violations.length === 0,
@@ -313,6 +326,8 @@ for (const profileName of Object.keys(PROFILES)) {
       nativeCalls: median(runs.map((x) => x.nativeCalls)),
       settleMs: median(runs.map((x) => x.settleMs)),
       nativeBusyMs: median(runs.map((x) => x.nativeBusyMs)),
+      reminderLagMs: median(runs.map((x) => x.reminderLagMs)),
+      tapMedianMs: runs[0].tapMedianMs === null ? null : median(runs.map((x) => x.tapMedianMs)),
       signOutCancelMs: runs[0].signOutCancelMs === undefined ? null : median(runs.map((x) => x.signOutCancelMs)),
       callsByName: Object.fromEntries(
         [...new Set(runs.flatMap((x) => Object.keys(x.calls)))].sort().map((k) => [k, median(runs.map((x) => x.calls[k] ?? 0))])
@@ -323,7 +338,8 @@ for (const profileName of Object.keys(PROFILES)) {
     out.results.push(r);
     console.log(
       `  ${name.padEnd(66)} native calls ${String(r.nativeCalls).padStart(4)}  ` +
-        `native busy ${r.nativeBusyMs.toFixed(0).padStart(5)} ms  settled after ${r.settleMs.toFixed(0).padStart(5)} ms` +
+        `native busy ${r.nativeBusyMs.toFixed(0).padStart(5)} ms  reminder idle ${r.reminderLagMs.toFixed(0).padStart(5)} ms after last tap` +
+        (r.tapMedianMs === null ? '' : `  tap->counts ${r.tapMedianMs.toFixed(0)} ms`) +
         (r.signOutCancelMs === null ? '' : `  sign-out cancel ${r.signOutCancelMs.toFixed(0)} ms`) +
         `  ${r.allCorrect ? 'final state OK' : 'FINAL STATE WRONG ' + r.violations.join('; ')}`
     );

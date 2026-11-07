@@ -1,0 +1,40 @@
+
+[baseline]
+  ok   foreground handler suppresses banner/list/sound/badge
+  ok   refresh schedules the count; channel created before schedule
+  ok   refresh() without a count reads the catalog
+  ok   singular wording for 1
+  ok   count dropping to 0 cancels the reminder
+  ok   rapid refreshes end on the LAST count
+  ok   sign-out (session deleted, then cancel) while refreshes are queued: nothing left
+  ok   a refresh AFTER sign-out does not re-arm
+  ok   a refresh in flight when sign-out starts: the later cancel wins
+  ok   toggle-off cancels and later refreshes stay off; toggle-on re-arms
+  ok   same count after a cancel is scheduled again
+  ok   a failed schedule is retried by the next refresh with the same count
+  ok   no permission: nothing scheduled (no prompt from refresh)
+  ok   cancel/schedule calls run strictly one at a time
+  no   unchanged count: a second refresh makes no native calls (50 native calls for 10 unchanged refreshes)
+  no   20 refreshes issued at once run at most twice (20 schedules, 100 native calls)
+  no   channel created once per process (3 channel calls for 3 schedules)
+
+[current]
+  ok   foreground handler suppresses banner/list/sound/badge
+  ok   refresh schedules the count; channel created before schedule
+  ok   refresh() without a count reads the catalog
+  ok   singular wording for 1
+  ok   count dropping to 0 cancels the reminder
+  ok   rapid refreshes end on the LAST count
+  ok   sign-out (session deleted, then cancel) while refreshes are queued: nothing left
+  ok   a refresh AFTER sign-out does not re-arm
+  ok   a refresh in flight when sign-out starts: the later cancel wins
+  ok   toggle-off cancels and later refreshes stay off; toggle-on re-arms
+  ok   same count after a cancel is scheduled again
+  ok   a failed schedule is retried by the next refresh with the same count
+  ok   no permission: nothing scheduled (no prompt from refresh)
+  ok   cancel/schedule calls run strictly one at a time
+  ok   unchanged count: a second refresh makes no native calls (0 native calls for 10 unchanged refreshes)
+  ok   20 refreshes issued at once run at most twice (1 schedules, 5 native calls)
+  ok   channel created once per process (1 channel calls for 3 schedules)
+
+all behaviour checks passed

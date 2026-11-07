@@ -1,0 +1,74 @@
+
+[current] catalog 5000 rows (unmarked 1415, pending 87); indexes: idx_assets_creation, idx_assets_excluded, idx_assets_marks, idx_assets_selected, idx_assets_status_creation, sqlite_autoindex_assets_1
+  libraryCounts                      median    0.380 ms   p90    0.408 ms
+  tap: setSelected (1 id)            median    0.325 ms   p90    0.380 ms
+  tap: toggle = setSelected+counts   median    0.749 ms   p90    0.806 ms
+  tap: setExcluded (won't upload)    median    0.343 ms   p90    0.390 ms
+  tap: markForUpload (1 id)          median    0.353 ms   p90    0.391 ms
+  excludeSelected (40 checked)       median    1.041 ms   p90    1.212 ms
+  settle: markStatus synced          median    0.247 ms   p90    0.346 ms
+  excludedAssetIds (per drain batch) median    0.314 ms   p90    0.367 ms
+  isExcluded                         median    0.011 ms   p90    0.019 ms
+  markedForSync()                    median    0.431 ms   p90    0.580 ms
+  markedForSync(auto retry)          median    0.374 ms   p90    0.439 ms
+  markedForSync(includeSynced)       median   11.092 ms   p90   12.481 ms
+  listAssets(unmarked) page 1        median    0.195 ms   p90    0.226 ms
+  listAssets(all) page 1             median    0.219 ms   p90    0.389 ms
+  listAssets(selected) page 1        median    0.150 ms   p90    0.165 ms
+  listAssets(synced) page 1          median    0.189 ms   p90    0.215 ms
+  listAssets(failed) page 1          median    0.102 ms   p90    0.120 ms
+  listAssets(excluded) page 1        median    0.203 ms   p90    0.227 ms
+  listAssets(unmarked) deep page     median    0.218 ms   p90    0.254 ms
+  listAssets(all) deep page          median    0.231 ms   p90    0.257 ms
+  listAssets(excluded) deep page     median    0.195 ms   p90    0.223 ms
+  runScan total median 39.1 ms; longest single statement 4.29 ms; 11 taps during scan: median 0.75 ms, max 3.53 ms
+
+[current] catalog 20000 rows (unmarked 5939, pending 363); indexes: idx_assets_creation, idx_assets_excluded, idx_assets_marks, idx_assets_selected, idx_assets_status_creation, sqlite_autoindex_assets_1
+  libraryCounts                      median    1.483 ms   p90    1.588 ms
+  tap: setSelected (1 id)            median    0.326 ms   p90    0.411 ms
+  tap: toggle = setSelected+counts   median    1.813 ms   p90    2.038 ms
+  tap: setExcluded (won't upload)    median    0.317 ms   p90    0.409 ms
+  tap: markForUpload (1 id)          median    0.312 ms   p90    0.351 ms
+  excludeSelected (40 checked)       median    1.640 ms   p90    3.751 ms
+  settle: markStatus synced          median    0.154 ms   p90    0.222 ms
+  excludedAssetIds (per drain batch) median    0.744 ms   p90    0.803 ms
+  isExcluded                         median    0.013 ms   p90    0.016 ms
+  markedForSync()                    median    1.618 ms   p90    1.958 ms
+  markedForSync(auto retry)          median    1.492 ms   p90    1.612 ms
+  markedForSync(includeSynced)       median   45.766 ms   p90   65.535 ms
+  listAssets(unmarked) page 1        median    0.205 ms   p90    0.231 ms
+  listAssets(all) page 1             median    0.213 ms   p90    0.239 ms
+  listAssets(selected) page 1        median    0.156 ms   p90    0.214 ms
+  listAssets(synced) page 1          median    0.196 ms   p90    0.230 ms
+  listAssets(failed) page 1          median    0.196 ms   p90    0.217 ms
+  listAssets(excluded) page 1        median    0.198 ms   p90    0.221 ms
+  listAssets(unmarked) deep page     median    0.215 ms   p90    0.239 ms
+  listAssets(all) deep page          median    0.233 ms   p90    0.259 ms
+  listAssets(excluded) deep page     median    0.207 ms   p90    0.227 ms
+  runScan total median 165.3 ms; longest single statement 7.09 ms; 41 taps during scan: median 1.76 ms, max 4.88 ms
+
+[current] catalog 60000 rows (unmarked 17798, pending 1166); indexes: idx_assets_creation, idx_assets_excluded, idx_assets_marks, idx_assets_selected, idx_assets_status_creation, sqlite_autoindex_assets_1
+  libraryCounts                      median    4.197 ms   p90    4.335 ms
+  tap: setSelected (1 id)            median    0.312 ms   p90    0.413 ms
+  tap: toggle = setSelected+counts   median    4.858 ms   p90    8.838 ms
+  tap: setExcluded (won't upload)    median    0.338 ms   p90    0.409 ms
+  tap: markForUpload (1 id)          median    0.327 ms   p90    0.640 ms
+  excludeSelected (40 checked)       median    1.741 ms   p90    4.249 ms
+  settle: markStatus synced          median    0.186 ms   p90    0.259 ms
+  excludedAssetIds (per drain batch) median    2.232 ms   p90    2.977 ms
+  isExcluded                         median    0.015 ms   p90    0.017 ms
+  markedForSync()                    median    5.880 ms   p90    7.961 ms
+  markedForSync(auto retry)          median    5.623 ms   p90    8.466 ms
+  markedForSync(includeSynced)       median  159.805 ms   p90  174.031 ms
+  listAssets(unmarked) page 1        median    0.200 ms   p90    0.213 ms
+  listAssets(all) page 1             median    0.220 ms   p90    0.270 ms
+  listAssets(selected) page 1        median    0.159 ms   p90    0.192 ms
+  listAssets(synced) page 1          median    0.188 ms   p90    0.207 ms
+  listAssets(failed) page 1          median    0.197 ms   p90    0.240 ms
+  listAssets(excluded) page 1        median    0.193 ms   p90    0.217 ms
+  listAssets(unmarked) deep page     median    0.211 ms   p90    0.227 ms
+  listAssets(all) deep page          median    0.225 ms   p90    0.246 ms
+  listAssets(excluded) deep page     median    0.205 ms   p90    0.246 ms
+  runScan total median 481.2 ms; longest single statement 8.43 ms; 121 taps during scan: median 4.44 ms, max 8.71 ms
+
+wrote bench/tap/out/sql-current.json
