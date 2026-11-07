@@ -1,3 +1,13 @@
   done file-bench.mjs {"variant":"before","lib":"js-sha256","size":104857600,"runs":5}
   done file-bench.mjs {"variant":"before","lib":"js-sha256","size":1073741824,"runs":3}
 Warning: disabling flag --expose_wasm due to conflicting flags
+  done file-bench.mjs {"variant":"before","lib":"js-sha256","size":104857600,"runs":3} --jitless
+
+| variant | library | engine | size | slicing | MB/s | longest block ms | p95 block ms | yields | reads (allocations) | bytes per read |
+|---|---|---|---|---|---|---|---|---|---|---|
+| before | js-sha256 | V8 (JIT) | 100 MiB | 16 MiB chunk, yield per chunk | 56.3 | 295.6 | 295.6 | 7 | 7 | 16 MiB |
+| before | js-sha256 | V8 (JIT) | 1024 MiB | 16 MiB chunk, yield per chunk | 57.5 | 322.1 | 298.8 | 64 | 64 | 16 MiB |
+| before | js-sha256 | V8 --jitless | 100 MiB | 16 MiB chunk, yield per chunk | 2.6 | 6223.2 | 6223.2 | 7 | 7 | 16 MiB |
+
+wrote results/before.json
+  done file-bench.mjs {"variant":"after","lib":"js-sha256","size":104857600,"runs":5}

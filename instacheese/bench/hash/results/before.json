@@ -1,0 +1,171 @@
+{
+  "when": "2026-11-07T17:21:34.558Z",
+  "node": "v22.23.4",
+  "file": [
+    {
+      "variant": "before",
+      "lib": "js-sha256",
+      "size": 104857600,
+      "runs": [
+        {
+          "seconds": 1.714664873,
+          "mbPerSec": 58.32043425782596,
+          "maxBlockMs": 296.687313,
+          "p95BlockMs": 296.687313,
+          "yields": 7,
+          "allocations": 7,
+          "maxAllocationBytes": 16777216,
+          "peakArrayBuffersMiB": 69.01939964294434
+        },
+        {
+          "seconds": 1.7863360089999998,
+          "mbPerSec": 55.98050954365552,
+          "maxBlockMs": 295.6364719999999,
+          "p95BlockMs": 295.6364719999999,
+          "yields": 7,
+          "allocations": 7,
+          "maxAllocationBytes": 16777216,
+          "peakArrayBuffersMiB": 69.01939964294434
+        },
+        {
+          "seconds": 1.8118216330000005,
+          "mbPerSec": 55.1930709837153,
+          "maxBlockMs": 292.66391299999987,
+          "p95BlockMs": 292.66391299999987,
+          "yields": 7,
+          "allocations": 7,
+          "maxAllocationBytes": 16777216,
+          "peakArrayBuffersMiB": 73.01939964294434
+        },
+        {
+          "seconds": 1.777377893,
+          "mbPerSec": 56.26265545095311,
+          "maxBlockMs": 301.4387800000004,
+          "p95BlockMs": 301.4387800000004,
+          "yields": 7,
+          "allocations": 7,
+          "maxAllocationBytes": 16777216,
+          "peakArrayBuffersMiB": 53.019399642944336
+        },
+        {
+          "seconds": 1.7684103150000001,
+          "mbPerSec": 56.54796239977824,
+          "maxBlockMs": 291.139905,
+          "p95BlockMs": 291.139905,
+          "yields": 7,
+          "allocations": 7,
+          "maxAllocationBytes": 16777216,
+          "peakArrayBuffersMiB": 53.019399642944336
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 56.26265545095311,
+        "seconds": 1.777377893,
+        "maxBlockMs": 295.6364719999999,
+        "p95BlockMs": 295.6364719999999,
+        "yields": 7,
+        "allocations": 7,
+        "maxAllocationBytes": 16777216,
+        "peakArrayBuffersMiB": 69.01939964294434
+      }
+    },
+    {
+      "variant": "before",
+      "lib": "js-sha256",
+      "size": 1073741824,
+      "runs": [
+        {
+          "seconds": 17.619793496,
+          "mbPerSec": 58.116458642518474,
+          "maxBlockMs": 322.06461299999864,
+          "p95BlockMs": 298.7858360000009,
+          "yields": 64,
+          "allocations": 64,
+          "maxAllocationBytes": 16777216,
+          "peakArrayBuffersMiB": 117.01939964294434
+        },
+        {
+          "seconds": 18.015108978,
+          "mbPerSec": 56.84117710586741,
+          "maxBlockMs": 332.5549330000031,
+          "p95BlockMs": 303.0608519999987,
+          "yields": 64,
+          "allocations": 64,
+          "maxAllocationBytes": 16777216,
+          "peakArrayBuffersMiB": 117.01939964294434
+        },
+        {
+          "seconds": 17.798967154,
+          "mbPerSec": 57.53142815199107,
+          "maxBlockMs": 310.1968749999942,
+          "p95BlockMs": 291.7432790000021,
+          "yields": 64,
+          "allocations": 64,
+          "maxAllocationBytes": 16777216,
+          "peakArrayBuffersMiB": 117.01939964294434
+        }
+      ],
+      "jitless": false,
+      "median": {
+        "mbPerSec": 57.53142815199107,
+        "seconds": 17.798967154,
+        "maxBlockMs": 322.06461299999864,
+        "p95BlockMs": 298.7858360000009,
+        "yields": 64,
+        "allocations": 64,
+        "maxAllocationBytes": 16777216,
+        "peakArrayBuffersMiB": 117.01939964294434
+      }
+    },
+    {
+      "variant": "before",
+      "lib": "js-sha256",
+      "size": 104857600,
+      "runs": [
+        {
+          "seconds": 37.365524502,
+          "mbPerSec": 2.676263784137366,
+          "maxBlockMs": 6062.454043,
+          "p95BlockMs": 6062.454043,
+          "yields": 7,
+          "allocations": 7,
+          "maxAllocationBytes": 16777216,
+          "peakArrayBuffersMiB": 25.01939582824707
+        },
+        {
+          "seconds": 38.368651315,
+          "mbPerSec": 2.6062943724296503,
+          "maxBlockMs": 6223.161028000002,
+          "p95BlockMs": 6223.161028000002,
+          "yields": 7,
+          "allocations": 7,
+          "maxAllocationBytes": 16777216,
+          "peakArrayBuffersMiB": 85.01939582824707
+        },
+        {
+          "seconds": 38.30407826,
+          "mbPerSec": 2.6106880661954874,
+          "maxBlockMs": 6330.2824180000025,
+          "p95BlockMs": 6330.2824180000025,
+          "yields": 7,
+          "allocations": 7,
+          "maxAllocationBytes": 16777216,
+          "peakArrayBuffersMiB": 69.01939582824707
+        }
+      ],
+      "jitless": true,
+      "median": {
+        "mbPerSec": 2.6106880661954874,
+        "seconds": 38.30407826,
+        "maxBlockMs": 6223.161028000002,
+        "p95BlockMs": 6223.161028000002,
+        "yields": 7,
+        "allocations": 7,
+        "maxAllocationBytes": 16777216,
+        "peakArrayBuffersMiB": 69.01939582824707
+      }
+    }
+  ],
+  "libs": []
+}
