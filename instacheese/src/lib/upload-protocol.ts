@@ -5,7 +5,7 @@ import { AppState, Platform } from 'react-native';
 
 import { CLIENT_VERSION, type Session } from './api';
 import { sha256OfReader } from './hash-file';
-import { log } from './log';
+import { log, logError } from './log';
 
 // Shared pieces of the /files/* upload protocol, used by both the picker
 // upload flow (uploader.ts) and the camera-roll sync flow (sync.ts).
@@ -196,6 +196,59 @@ export async function postJson<T>(session: Session, path: string, body: unknown)
   }
 }
 
+// The SHA-256 the server checks, as lowercase hex, of exactly `size` bytes.
+//
+// expo-file-system's native File.digest (SDK 58+) streams the file through
+// the platform's SHA-256 off the JS thread: on Android a MessageDigest fed
+// 64 KiB reads inside withContext(Dispatchers.IO), content:// URIs through
+// the ContentResolver; on iOS CryptoKit fed 64 KiB FileHandle reads on the
+// module's async queue. Byte counts are 64-bit on both, so files over
+// 2/4 GiB are fine. The JS thread just awaits a promise, for any file size,
+// instead of hashing in JS (~5 MB/s on Hermes: minutes for a big video).
+//
+// Unlike the JS loop it hashes the whole file, not `size` bytes, so the size
+// is checked before and after instead: a file that is (or became) shorter or
+// longer than recorded would fail the upload with a size mismatch, and one
+// edited mid-hash could hash neither version. Both surface as
+// StaleFileError, as when the JS loop ran out of bytes early.
+export async function sha256OfFile(uri: string, size?: number): Promise<string> {
+  const file = new File(uri);
+  if (typeof file.digest === 'function') {
+    await expectSize(uri, size);
+    let hex: string | null = null;
+    try {
+      hex = await file.digest('SHA-256');
+    } catch (err) {
+      // A file that vanished or changed meanwhile fails as such; only a
+      // failure of the native hash itself falls back to the JS one.
+      await expectSize(uri, size, err);
+      logError('upload', 'native SHA-256 failed; hashing in JS', err);
+    }
+    if (hex !== null) {
+      await expectSize(uri, size);
+      if (/^[0-9a-f]{64}$/.test(hex)) return hex;
+      log('upload', `native SHA-256 returned ${JSON.stringify(hex.slice(0, 80))}; hashing in JS`);
+    }
+  }
+  return sha256OfFileInJs(uri, size);
+}
+
+// Throws unless the file exists with exactly `size` bytes (when given):
+// StaleFileError for a different size; `cause` (or a plain error) when the
+// file is gone or can't be read.
+async function expectSize(uri: string, size: number | undefined, cause?: unknown): Promise<void> {
+  let info: LegacyFileSystem.FileInfo;
+  try {
+    info = await LegacyFileSystem.getInfoAsync(uri);
+  } catch (err) {
+    throw cause ?? err;
+  }
+  if (!info.exists) throw cause ?? new Error('File is no longer available');
+  if (size !== undefined && info.size !== size) {
+    throw new StaleFileError(`File is ${info.size} bytes, expected ${size}`);
+  }
+}
+
 function toHex(bytes: Uint8Array): string {
   let out = '';
   for (let i = 0; i < bytes.length; i++) {
@@ -204,15 +257,18 @@ function toHex(bytes: Uint8Array): string {
   return out;
 }
 
+// Fallback only (the native digest is unavailable or failed): the hashing
+// the app shipped before SDK 58.
+//
 // Above this size, reading the whole file into memory to hash it risks
 // running out of memory (the native read and the digest each hold their own
 // copy on the Java heap), so fall back to chunked reads + an incremental JS
-// hash. Below it, the native one-shot digest is hundreds of times faster
+// hash. Below it, expo-crypto's one-shot digest is hundreds of times faster
 // than a JS hash on Hermes: one short synchronous stretch (tens of ms for
 // 24 MB) per file.
 const CHUNKED_HASH_THRESHOLD = 24 * 1024 * 1024;
 
-export async function sha256OfFile(uri: string, size?: number): Promise<string> {
+async function sha256OfFileInJs(uri: string, size?: number): Promise<string> {
   if (size !== undefined && size > CHUNKED_HASH_THRESHOLD) {
     // Sequential reads through a file handle: its offset is 64-bit on both
     // platforms. (The legacy readAsStringAsync `position` is a 32-bit Int on
