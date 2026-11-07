@@ -1,11 +1,20 @@
 
-before (HEAD a112239): 1080 assets loaded, 333 cells mounted (111 rows), scrolled to row 180
+before (HEAD ba5740b): 1080 assets loaded, 333 cells mounted (111 rows), scrolled to row 180
 
-noop (harness floor)         busy     0.02ms  render        0ms  commits   0  screen   0  rows    0  cells    0  images    0  icons    0  host     0
-item event, visible asset    busy     7.47ms  render     3.36ms  commits   2  screen   1  rows  111  cells  333  images  333  icons    0  host  1303
-item event, asset not loaded busy     7.55ms  render     3.42ms  commits   2  screen   1  rows  111  cells  333  images  333  icons    0  host  1303
-'checking' burst x200        busy    11.94ms  render     6.88ms  commits   2  screen   1  rows  111  cells  333  images  333  icons    0  host  1502
-summary change only          busy     8.46ms  render     3.98ms  commits   2  screen   1  rows  111  cells  333  images  333  icons    0  host  1503
-one file upload cycle        busy    43.01ms  render    16.78ms  commits   8  screen   6  rows  555  cells 1665  images 1665  icons    2  host  7517
-tap (select toggle)          busy    16.32ms  render     6.10ms  commits   3  screen   2  rows  222  cells  666  images  666  icons    1  host  3010
-won't upload (long-press)    busy    17.37ms  render     5.89ms  commits   3  screen   2  rows  222  cells  666  images  666  icons    1  host  3007
+noop (harness floor)         busy     0.04ms  render        0ms  commits   0  screen   0  rows    0  cells     0  icons    0  host upd     0  img mount/unmount 0/0
+item event, visible asset    busy     7.34ms  render     3.13ms  commits   2  screen   1  rows  111  cells   333  icons    0  host upd  1303  img mount/unmount 0/0
+item event, asset not loaded busy     6.41ms  render     2.95ms  commits   2  screen   1  rows  111  cells   333  icons    0  host upd  1303  img mount/unmount 0/0
+'checking' burst x200        busy    12.52ms  render     6.77ms  commits   2  screen   1  rows  111  cells   333  icons    0  host upd  1502  img mount/unmount 0/0
+summary change only          busy     7.69ms  render     3.37ms  commits   2  screen   1  rows  111  cells   333  icons    0  host upd  1503  img mount/unmount 0/0
+one file upload cycle        busy    41.17ms  render    16.56ms  commits   8  screen   6  rows  555  cells  1665  icons    2  host upd  7517  img mount/unmount 0/0
+tap (select toggle)          busy    14.55ms  render     5.86ms  commits   3  screen   2  rows  222  cells   666  icons    1  host upd  3010  img mount/unmount 0/0
+won't upload (long-press)    busy    15.36ms  render     4.96ms  commits   3  screen   2  rows  222  cells   666  icons    1  host upd  3007  img mount/unmount 0/0
+drain batch of 200 (all exist) busy  2341.80ms  render  1031.22ms  commits 448  screen 402  rows 44622  cells 133866  icons  400  host upd 604805  img mount/unmount 0/0
+enqueue re-trigger, 1000 items busy    38.51ms  render    22.91ms  commits   6  screen   5  rows  555  cells  1665  icons    0  host upd  7510  img mount/unmount 0/0
+Back up 16 selected (top)    busy     9.68ms  render     2.09ms  commits   3  screen   2  rows   80  cells   240  icons  138  host upd   525  img mount/unmount 120/159
+
+React Compiler on app code:
+  CompileError  src/app/(tabs)/library.tsx @ HEAD:67  — React Compiler has skipped optimizing this component because one or more React ESLint rules were disabled
+  CompileSuccess src/lib/theme.ts:34 usePalette 
+
+wrote bench/grid/results/before.json

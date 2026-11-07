@@ -15,8 +15,8 @@ const require = createRequire(join(APP, 'package.json'));
 export const MiB = 1024 * 1024;
 
 // --- The shipped loop: transpile src/lib/hash-file.ts once ------------------
-// Output goes to bench/hash/.build/ (git-ignored) so imports of
-// @noble/hashes still resolve from instacheese/node_modules.
+// Output goes to bench/hash/.build/ (git-ignored) so its js-sha256 import
+// resolves from instacheese/node_modules, like the app's.
 export function buildShipped() {
   const ts = require('typescript');
   const src = readFileSync(join(APP, 'src/lib/hash-file.ts'), 'utf8');
@@ -94,10 +94,11 @@ export function referenceHex(size) {
   return h.digest('hex');
 }
 
-// --- Hash libraries behind one interface: update(Uint8Array) / digest() ------
+// --- Hash libraries behind one interface: update(Uint8Array) / hex() ---------
+// (the interface src/lib/hash-file.ts takes). Adapters below return
+// { update, digest } and are wrapped to add hex().
 export async function hashers() {
   const { sha256: jsSha256 } = require('js-sha256');
-  const { sha256: noble } = await import('@noble/hashes/sha2.js');
   const forge = require('node-forge');
   const toBinaryString = (u8) => {
     // forge only takes "binary strings"; on the phone this conversion is
@@ -108,12 +109,9 @@ export async function hashers() {
     }
     return s;
   };
-  return {
-    'js-sha256': () => {
-      const h = jsSha256.create();
-      return { update: (d) => h.update(d), digest: () => new Uint8Array(h.arrayBuffer()) };
-    },
-    '@noble/hashes': () => noble.create(),
+  const adapters = {
+    // Exactly what the app uses (it has hex() itself).
+    'js-sha256': () => jsSha256.create(),
     'node-forge': () => {
       const md = forge.md.sha256.create();
       return {
@@ -130,6 +128,14 @@ export async function hashers() {
       return { update: (d) => h.update(d), digest: () => new Uint8Array(h.digest()) };
     },
   };
+  const out = {};
+  for (const [name, make] of Object.entries(adapters)) {
+    out[name] = () => {
+      const h = make();
+      return h.hex ? h : { update: (d) => h.update(d), hex: () => toHex(h.digest()) };
+    };
+  }
+  return out;
 }
 
 async function benchOnlyHashers() {
@@ -142,6 +148,10 @@ async function benchOnlyHashers() {
       process.stderr.write(`(skipping ${name}: ${err.code ?? err.message}; run npm ci in bench/hash)\n`);
     }
   };
+  await tryAdd('@noble/hashes', async () => {
+    const { sha256 } = await import(benchRequire.resolve('@noble/hashes/sha2.js'));
+    return () => sha256.create();
+  });
   await tryAdd('@stablelib/sha256', async () => {
     const { SHA256 } = await import(benchRequire.resolve('@stablelib/sha256'));
     return () => new SHA256();

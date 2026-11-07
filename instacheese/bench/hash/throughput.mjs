@@ -5,7 +5,7 @@
 // on the phone is a synchronous native expo-crypto digest) when lib is
 // node:crypto.
 import { performance } from 'node:perf_hooks';
-import { hashers, fillFrom, toHex, median, MiB } from './common.mjs';
+import { hashers, fillFrom, median, MiB } from './common.mjs';
 import { createHash } from 'node:crypto';
 
 const cfg = JSON.parse(process.argv[2]);
@@ -20,7 +20,7 @@ for (let r = 0; r < cfg.runs; r++) {
   const t0 = performance.now();
   const h = make();
   for (let pos = 0; pos < data.length; pos += SLICE) h.update(data.subarray(pos, pos + SLICE));
-  const hex = toHex(h.digest());
+  const hex = h.hex();
   const ms = performance.now() - t0;
   if (hex !== expected) throw new Error(`WRONG HASH from ${cfg.lib}`);
   rates.push(cfg.size / MiB / (ms / 1000));

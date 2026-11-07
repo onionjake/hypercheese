@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -9,11 +8,15 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
+  type LayoutChangeEvent,
+  type ListRenderItemInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CompatNotice } from '@/components/compat-notice';
+import { LibraryCell } from '@/components/library-cell';
 import { useAuth } from '@/lib/auth';
 import {
   excludeSelected,
@@ -64,6 +67,36 @@ const WONT_UPLOAD_CANCELS: queue.QueueSource[] = ['backup', 'sync'];
 const countFor = (counts: LibraryCounts, key: AssetFilter): number =>
   key === 'all' ? counts.total : counts[key];
 
+const COLUMNS = 3;
+
+// Grid performance notes (see bench/grid/RESULTS.md for the measurements):
+// - Rows are keyed by position, not by asset id. With numColumns, FlatList
+//   keys a row by its items' keys joined together, so id keys meant that
+//   removing one photo near the top (Back up / Won't upload consuming the
+//   selection, a rescan) re-keyed — unmounted and remounted — every later
+//   row: hundreds of native views and image requests in one go. Position
+//   keys keep the rows; cells just get their new asset (recyclingKey on the
+//   image clears the old picture first). Cells are stateless, so nothing
+//   can stick to the wrong photo.
+// - The window is bounded (WINDOW_SIZE screens of rows instead of the default
+//   21) and rows have a fixed height (getItemLayout), so far fewer cells
+//   and thumbnail bitmaps stay alive, and nothing waits on per-cell layout.
+const positionKey = (_item: LibraryAsset, index: number) => String(index);
+const WINDOW_SIZE = 7;
+
+type ItemEvent = Pick<queue.QueueItem, 'mtime' | 'source' | 'error'> & {
+  status: LibraryAsset['status'];
+};
+
+// Applies one queue item event to its catalog row, or returns it unchanged.
+// An upload of an older version (edited mid-upload) doesn't change the
+// catalog row, so don't badge it either.
+function applyItemEvent(a: LibraryAsset, ev: ItemEvent): LibraryAsset {
+  if (!(ev.status === 'pending' || ev.source === 'picker' || a.mtime === ev.mtime)) return a;
+  if (a.status === ev.status && a.error === ev.error) return a;
+  return { ...a, status: ev.status, error: ev.error };
+}
+
 export default function LibraryScreen() {
   const { session, user } = useAuth();
   const palette = usePalette();
@@ -82,6 +115,12 @@ export default function LibraryScreen() {
   const loadGeneration = useRef(0);
   const pageLoading = useRef(false);
   const countsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tapCountsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Queue item events waiting for the next frame, per asset, in order.
+  const pendingItemEvents = useRef(new Map<string, ItemEvent[]>());
+  const itemFrame = useRef<number | null>(null);
+  const { width: windowWidth } = useWindowDimensions();
+  const [listWidth, setListWidth] = useState<number | null>(null);
 
   const canWrite = !!user?.can_write;
   const running = summary.state === 'running';
@@ -103,6 +142,17 @@ export default function LibraryScreen() {
       countsTimer.current = null;
       refreshCounts();
     }, 500);
+  }, [refreshCounts]);
+
+  // Same for single-photo taps (the cell itself updates right away): a run
+  // of quick taps costs one count query instead of one per tap. Shorter, so
+  // the chips and the Back up button keep up with the taps.
+  const refreshCountsAfterTap = useCallback(() => {
+    if (tapCountsTimer.current) clearTimeout(tapCountsTimer.current);
+    tapCountsTimer.current = setTimeout(() => {
+      tapCountsTimer.current = null;
+      refreshCounts();
+    }, 200);
   }, [refreshCounts]);
 
   // Always loads for the current filter. A reset supersedes any load in
@@ -171,6 +221,29 @@ export default function LibraryScreen() {
           : next
       );
     });
+    // Item events come per file per phase, a drain batch marks up to 200
+    // 'checking' back to back, and every re-enqueue re-announces each pending
+    // row. Re-rendering the grid for each one starved the JS thread, so they
+    // are queued and applied together once per frame, in arrival order.
+    const flushItemEvents = () => {
+      itemFrame.current = null;
+      const pending = pendingItemEvents.current;
+      if (pending.size === 0) return;
+      pendingItemEvents.current = new Map();
+      // Returning the same array when no loaded row changed lets React skip
+      // the render entirely (most events are for photos not in this list).
+      setAssets((prev) => {
+        let changed = false;
+        const next = prev.map((a) => {
+          const events = pending.get(a.id);
+          if (!events) return a;
+          const updated = events.reduce(applyItemEvent, a);
+          if (updated !== a) changed = true;
+          return updated;
+        });
+        return changed ? next : prev;
+      });
+    };
     const unItems = queue.subscribeItems((item) => {
       if (!item.assetId) return;
       const status =
@@ -179,21 +252,24 @@ export default function LibraryScreen() {
           : item.status === 'failed'
             ? 'failed'
             : 'pending';
-      setAssets((prev) =>
-        prev.map((a) =>
-          // An upload of an older version (edited mid-upload) doesn't change
-          // the catalog row, so don't badge it either.
-          a.id === item.assetId && (status === 'pending' || item.source === 'picker' || a.mtime === item.mtime)
-            ? { ...a, status, error: item.error }
-            : a
-        )
-      );
+      const ev: ItemEvent = { status, source: item.source, mtime: item.mtime, error: item.error };
+      // An event that applies regardless of mtime overwrites whatever came
+      // before it, so only it and later ones need keeping.
+      const unconditional = status === 'pending' || item.source === 'picker';
+      const events = pendingItemEvents.current.get(item.assetId);
+      if (events && !unconditional) events.push(ev);
+      else pendingItemEvents.current.set(item.assetId, [ev]);
+      if (itemFrame.current == null) itemFrame.current = requestAnimationFrame(flushItemEvents);
       if (status !== 'pending') refreshCountsSoon();
     });
     return () => {
       unSummary();
       unItems();
       if (countsTimer.current) clearTimeout(countsTimer.current);
+      if (tapCountsTimer.current) clearTimeout(tapCountsTimer.current);
+      if (itemFrame.current != null) cancelAnimationFrame(itemFrame.current);
+      itemFrame.current = null;
+      pendingItemEvents.current = new Map();
     };
   }, [refreshCountsSoon]);
 
@@ -207,13 +283,18 @@ export default function LibraryScreen() {
 
   // Tapping only toggles working-set membership — the decision happens when a
   // batch action (Back up / Won't upload) commits the selection.
-  const toggle = async (asset: LibraryAsset) => {
-    if (!asset.supported) return;
-    const selected = !asset.selected;
-    await setSelected([asset.id], selected);
-    setAssets((prev) => prev.map((a) => (a.id === asset.id ? { ...a, selected } : a)));
-    refreshCounts();
-  };
+  // Stable (as are the other per-cell handlers below) so memoized grid
+  // cells only re-render when their own asset changes.
+  const toggle = useCallback(
+    async (asset: LibraryAsset) => {
+      if (!asset.supported) return;
+      const selected = !asset.selected;
+      await setSelected([asset.id], selected);
+      setAssets((prev) => prev.map((a) => (a.id === asset.id ? { ...a, selected } : a)));
+      refreshCountsAfterTap();
+    },
+    [refreshCountsAfterTap]
+  );
 
   // Clearing the checkboxes is just a selection reset for staging the next
   // batch — it never touches sync state, so anything already marked for
@@ -245,24 +326,27 @@ export default function LibraryScreen() {
 
   // Marking "won't upload" also pulls the photo out of the upload queue, same
   // as un-checking it would.
-  const markWontUpload = async (asset: LibraryAsset) => {
-    await setExcluded([asset.id], true);
-    await queue.removeQueued([queue.assetKey(asset.id)], WONT_UPLOAD_CANCELS);
-    setAssets((prev) =>
-      prev.map((a) =>
-        a.id === asset.id
-          ? {
-              ...a,
-              excluded: true,
-              selected: false,
-              error: null,
-              status: a.status === 'synced' ? 'synced' : 'none',
-            }
-          : a
-      )
-    );
-    refreshCounts();
-  };
+  const markWontUpload = useCallback(
+    async (asset: LibraryAsset) => {
+      await setExcluded([asset.id], true);
+      await queue.removeQueued([queue.assetKey(asset.id)], WONT_UPLOAD_CANCELS);
+      setAssets((prev) =>
+        prev.map((a) =>
+          a.id === asset.id
+            ? {
+                ...a,
+                excluded: true,
+                selected: false,
+                error: null,
+                status: a.status === 'synced' ? 'synced' : 'none',
+              }
+            : a
+        )
+      );
+      refreshCountsAfterTap();
+    },
+    [refreshCountsAfterTap]
+  );
 
   // Bulk "won't upload" for the whole current selection — select a batch by
   // tapping (or Select all), then write them all off in one go. Confirmed
@@ -292,27 +376,30 @@ export default function LibraryScreen() {
 
   // Direct change of mind from the detail dialog: mark for upload and start
   // uploading right away, without a trip through the selection.
-  const markForUploadNow = async (asset: LibraryAsset) => {
-    await markForUpload([asset.id]);
-    await queue.enqueueBackupPending();
-    queue.kick('backup');
-    setAssets((prev) =>
-      prev.map((a) =>
-        a.id === asset.id
-          ? {
-              ...a,
-              excluded: false,
-              selected: false,
-              error: null,
-              status: a.status === 'synced' ? 'synced' : 'pending',
-            }
-          : a
-      )
-    );
-    refreshCounts();
-  };
+  const markForUploadNow = useCallback(
+    async (asset: LibraryAsset) => {
+      await markForUpload([asset.id]);
+      await queue.enqueueBackupPending();
+      queue.kick('backup');
+      setAssets((prev) =>
+        prev.map((a) =>
+          a.id === asset.id
+            ? {
+                ...a,
+                excluded: false,
+                selected: false,
+                error: null,
+                status: a.status === 'synced' ? 'synced' : 'pending',
+              }
+            : a
+        )
+      );
+      refreshCountsAfterTap();
+    },
+    [refreshCountsAfterTap]
+  );
 
-  const showDetails = (item: LibraryAsset) => {
+  const showDetails = useCallback((item: LibraryAsset) => {
     const lines = [
       item.excluded
         ? "Marked won't upload"
@@ -341,59 +428,57 @@ export default function LibraryScreen() {
     }
     buttons.push({ text: 'Close', style: 'cancel' });
     Alert.alert(item.filename, lines.join('\n'), buttons);
-  };
+  }, [markForUploadNow, markWontUpload]);
 
-  const cell = ({ item }: { item: LibraryAsset }) => (
-    <Pressable
-      style={styles.cell}
-      onPress={() => toggle(item)}
-      onLongPress={() => showDetails(item)}
-      accessibilityRole="checkbox"
-      accessibilityLabel={item.filename}
-      accessibilityState={{ checked: item.selected }}
-      accessibilityHint="Long press for details"
-    >
-      <Image source={{ uri: item.uri }} style={styles.thumb} contentFit="cover" recyclingKey={item.id} />
-      {!item.supported ? (
-        <View style={styles.dim}>
-          <Ionicons name="ban" size={18} color="#fff" />
-        </View>
-      ) : (
-        <>
-          <View style={styles.selectBadge}>
-            <Ionicons
-              name={
-                item.selected
-                  ? 'checkmark-circle'
-                  : item.excluded
-                    ? 'close-circle'
-                    : 'ellipse-outline'
-              }
-              size={22}
-              color={
-                item.selected ? accent : item.excluded ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.9)'
-              }
-            />
-          </View>
-          {item.status !== 'none' ? (
-            <View style={styles.statusBadge}>
-              {item.status === 'synced' ? (
-                <Ionicons name="cloud-done" size={16} color="#7BE38B" />
-              ) : item.status === 'failed' ? (
-                <Ionicons name="alert-circle" size={16} color="#ED4956" />
-              ) : (
-                <Ionicons name="cloud-upload-outline" size={16} color="#fff" />
-              )}
-            </View>
-          ) : null}
-          {item.mediaType === 'video' ? (
-            <View style={styles.videoBadge}>
-              <Ionicons name="videocam" size={14} color="#fff" />
-            </View>
-          ) : null}
-        </>
-      )}
-    </Pressable>
+  const renderCell = useCallback(
+    ({ item }: ListRenderItemInfo<LibraryAsset>) => (
+      <LibraryCell item={item} onToggle={toggle} onDetails={showDetails} />
+    ),
+    [toggle, showDetails]
+  );
+
+  // Every FlatList prop below is stable unless what it shows changed, so
+  // screen-only updates (queue summary, chip counts) skip the grid entirely.
+  const rowLength = (listWidth ?? windowWidth) / COLUMNS;
+  const getItemLayout = useCallback(
+    (_data: ArrayLike<LibraryAsset> | null | undefined, index: number) => ({
+      length: rowLength,
+      offset: rowLength * index,
+      index,
+    }),
+    [rowLength]
+  );
+  const onListLayout = useCallback((e: LayoutChangeEvent) => {
+    setListWidth(e.nativeEvent.layout.width);
+  }, []);
+
+  // onEndReached reads the latest loadPage/scanning without changing identity.
+  const latest = useRef({ loadPage, scanning });
+  useLayoutEffect(() => {
+    latest.current = { loadPage, scanning };
+  });
+  const onEndReached = useCallback(() => {
+    if (!endReached.current && !latest.current.scanning) latest.current.loadPage(false);
+  }, []);
+
+  const listEmpty = useMemo(
+    () => (
+      <View style={styles.center}>
+        {scanning ? (
+          <Text style={{ color: palette.subtleText }}>
+            Scanning library… ({scanCount})
+          </Text>
+        ) : (
+          <Text style={{ color: palette.subtleText, textAlign: 'center', padding: 24 }}>
+            {loadError ??
+              (filter === 'unmarked'
+                ? 'All caught up — every photo has been marked, backed up, or skipped.'
+                : 'No photos here yet.')}
+          </Text>
+        )}
+      </View>
+    ),
+    [scanning, scanCount, loadError, filter, palette.subtleText]
   );
 
   const showStatusRow = running || summary.state === 'paused' || summary.remaining > 0 || summary.failed > 0;
@@ -449,29 +534,15 @@ export default function LibraryScreen() {
 
           <FlatList
             data={assets}
-            numColumns={3}
-            keyExtractor={(a) => a.id}
-            renderItem={cell}
+            numColumns={COLUMNS}
+            keyExtractor={positionKey}
+            renderItem={renderCell}
+            getItemLayout={getItemLayout}
+            windowSize={WINDOW_SIZE}
+            onLayout={onListLayout}
             onEndReachedThreshold={2}
-            onEndReached={() => {
-              if (!endReached.current && !scanning) loadPage(false);
-            }}
-            ListEmptyComponent={
-              <View style={styles.center}>
-                {scanning ? (
-                  <Text style={{ color: palette.subtleText }}>
-                    Scanning library… ({scanCount})
-                  </Text>
-                ) : (
-                  <Text style={{ color: palette.subtleText, textAlign: 'center', padding: 24 }}>
-                    {loadError ??
-                      (filter === 'unmarked'
-                        ? 'All caught up — every photo has been marked, backed up, or skipped.'
-                        : 'No photos here yet.')}
-                  </Text>
-                )}
-              </View>
-            }
+            onEndReached={onEndReached}
+            ListEmptyComponent={listEmpty}
           />
 
           {showStatusRow ? (
@@ -587,28 +658,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  cell: { flex: 1, maxWidth: '33.333%', aspectRatio: 1, margin: 1 },
-  thumb: { flex: 1, backgroundColor: '#8883' },
-  dim: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectBadge: { position: 'absolute', top: 4, left: 4 },
-  statusBadge: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderRadius: 9,
-    padding: 1,
-  },
-  videoBadge: { position: 'absolute', bottom: 4, left: 4 },
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',

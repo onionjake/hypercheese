@@ -1,10 +1,11 @@
 {
   "name": "instacheese-hash-bench",
   "private": true,
-  "description": "Comparison-only SHA-256 libraries for bench/hash (not part of the app). js-sha256, @noble/hashes and node-forge resolve from ../../node_modules.",
+  "description": "Comparison-only SHA-256 libraries for bench/hash (not part of the app). js-sha256 and node-forge resolve from ../../node_modules.",
   "type": "module",
   "devDependencies": {
     "@aws-crypto/sha256-js": "5.2.0",
+    "@noble/hashes": "2.4.0",
     "@stablelib/sha256": "2.0.1",
     "asmcrypto.js": "2.3.2",
     "crypto-js": "4.2.0",

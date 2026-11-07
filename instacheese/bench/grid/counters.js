@@ -8,6 +8,8 @@ const counters = {
   cellRenderer: 0, // VirtualizedList CellRenderer render() calls (one per grid row)
   cell: 0, // grid cell bodies: Pressable renders with accessibilityRole="checkbox"
   image: 0, // expo-image <Image> renders (one per cell)
+  imageMount: 0, // <Image> mounts (new native image view + Glide request)
+  imageUnmount: 0, // <Image> unmounts
   icon: 0, // Ionicons renders
   pressable: 0,
   view: 0,

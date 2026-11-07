@@ -6,9 +6,9 @@
 //   before — a faithful copy of the pre-fix sha256OfFile loop
 //            (16 MiB readBytes, one update per chunk, yield after each chunk).
 //   after  — the shipped sha256OfReader from src/lib/hash-file.ts, with `lib`
-//            injected as the hasher (the app uses @noble/hashes).
+//            injected as the hasher (the app uses js-sha256).
 import { performance } from 'node:perf_hooks';
-import { SyntheticFile, hashers, loadShipped, referenceHex, toHex, median, MiB } from './common.mjs';
+import { SyntheticFile, hashers, loadShipped, referenceHex, median, MiB } from './common.mjs';
 
 const cfg = JSON.parse(process.argv[2]);
 const libs = await hashers();
@@ -29,7 +29,7 @@ async function beforeLoop(handle, size, yieldToUI, createHash) {
     read += chunk.length;
     await yieldToUI();
   }
-  return toHex(hash.digest());
+  return hash.hex();
 }
 
 function instrumentedYield() {

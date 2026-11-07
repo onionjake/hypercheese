@@ -3,6 +3,14 @@
 const React = require('react');
 const { counters } = require('../counters');
 class Image extends React.PureComponent {
+  // A mount = a new native ExpoImageViewWrapper + a Glide request on device;
+  // an unmount = that view torn down.
+  componentDidMount() {
+    counters.imageMount++;
+  }
+  componentWillUnmount() {
+    counters.imageUnmount++;
+  }
   render() {
     counters.image++;
     return React.createElement('rn-view', { _p: this.props });

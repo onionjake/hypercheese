@@ -159,13 +159,22 @@ function layoutPass() {
     sent.content = y;
     p.onContentSizeChange?.(WIDTH, y);
     events++;
+    // Like a native ScrollView whose content shrank under it: the offset is
+    // clamped and a scroll event follows.
+    const max = Math.max(0, y - VIEWPORT);
+    if (scrollOffset > max) {
+      scrollTo(max);
+      events++;
+    }
   }
   return events;
 }
 
 let scrollTs = 0;
+let scrollOffset = 0;
 function scrollTo(offset) {
   const scroll = findScroll();
+  scrollOffset = offset;
   scrollTs += 1000;
   scroll._p.onScroll({
     timeStamp: scrollTs,
@@ -246,12 +255,14 @@ async function measureOnce(fn) {
     ...snapCounters(),
     hostUpdates: hostStats.propUpdates - host0.propUpdates,
     hostCreated: hostStats.created - host0.created,
+    hostRemoved: hostStats.removes - host0.removes,
   };
 }
 
-async function scenario(name, describe, makeRep, reps = REPS, warmup = WARMUP) {
+async function scenario(name, describe, makeRep, reps = REPS, warmup = WARMUP, prepare = null) {
   const runs = [];
   for (let i = 0; i < warmup + reps; i++) {
+    if (prepare) await prepare(i);
     const r = await measureOnce(() => makeRep(i));
     if (i >= warmup) runs.push(r);
   }
@@ -269,7 +280,8 @@ async function scenario(name, describe, makeRep, reps = REPS, warmup = WARMUP) {
   console.log(
     `${name.padEnd(28)} busy ${fmt(med.busyMs).padStart(8)}ms  render ${fmt(med.renderMs).padStart(8)}ms  ` +
       `commits ${fmt(med.commits).padStart(3)}  screen ${fmt(med.screen).padStart(3)}  rows ${fmt(med.cellRenderer).padStart(4)}  ` +
-      `cells ${fmt(med.cell).padStart(4)}  images ${fmt(med.image).padStart(4)}  icons ${fmt(med.icon).padStart(4)}  host ${fmt(med.hostUpdates).padStart(5)}`
+      `cells ${fmt(med.cell).padStart(5)}  icons ${fmt(med.icon).padStart(4)}  host upd ${fmt(med.hostUpdates).padStart(5)}  ` +
+      `img mount/unmount ${fmt(med.imageMount)}/${fmt(med.imageUnmount)}`
   );
 }
 
@@ -447,6 +459,69 @@ async function main() {
     },
     Number(arg('batch-reps', 5)),
     1
+  );
+
+  await scenario(
+    'enqueue re-trigger, 1000 items',
+    'auto-retry/foreground re-enqueue of 1000 pending backup rows (not in the Unmarked list): ' +
+      "1000 'queued' emitItem calls, yielding to the UI every 200 (upload-queue.ts enqueue)",
+    async (i) => {
+      for (let k = 0; k < 1000; k++) {
+        queue.emitItem(asItem({ id: `pending-${k}`, filename: `p${k}.jpg`, mtime: 1 }, 'queued'));
+        if ((k + 1) % 200 === 0) await idle(1);
+      }
+    },
+    Number(arg('batch-reps', 5)),
+    1
+  );
+
+  // Triage flow at the top of Unmarked: 16 photos in the first 11 rows selected (16 is not a multiple of 3, so every later row's key changes), then
+  // "Back up" commits them and reloads Unmarked, so they drop out and every
+  // later photo shifts left. Prepared outside the measurement: reset the 15
+  // in the fake DB, reload via the Unmarked chip, scroll to the top, select.
+  let picked = [];
+  await scenario(
+    'Back up 16 selected (top)',
+    'press Back up with 16 selected at the top of Unmarked: markSelectedForUpload, enqueue, loadPage(true), counts',
+    async () => {
+      const btn = [...walk(container)].find(
+        (el) => el._p && el._p.onPress && typeof el._p.children?.props?.children === 'string' &&
+          el._p.children.props.children.startsWith('Back up')
+      );
+      btn._p.onPress();
+    },
+    Number(arg('batch-reps', 5)),
+    1,
+    async () => {
+      for (const a of libraryDb.__db.rows) {
+        if (a.status === 'pending' || a.selected) {
+          a.status = 'none';
+          a.selected = false;
+        }
+      }
+      const chip = [...walk(container)].find(
+        (el) => el._p && el._p.onPress && Array.isArray(el._p.children?.props?.children) &&
+          el._p.children.props.children[0] === 'Unmarked'
+      );
+      chip._p.onPress();
+      await settle();
+      scrollTo(0);
+      await settle();
+      // Load a few pages so the top-of-list window is realistic.
+      while (loadedAssets().length < 360) {
+        scrollTo(Math.max(0, sent.content - VIEWPORT));
+        await settle();
+      }
+      scrollTo(0);
+      await settle();
+      // Every other photo in the first 11 rows: a typical scattered pick.
+      picked = loadedAssets().slice(0, 32).filter((a, k) => k % 2 === 0);
+      for (const a of picked) {
+        cellFor(a.filename)._p.onPress(); // select by tapping, as a user would
+        await settle();
+      }
+      results.env.topWindowCells = mountedCells().length;
+    }
   );
 
   results.compiler = compilerEvents
