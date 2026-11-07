@@ -57,6 +57,47 @@ What it measures:
   is the time between yields: the longest uninterrupted JS-thread stretch.
 - `libs`: in-memory throughput, 32 KiB updates, median of 5 runs.
 
+Under Expo SDK 58, `FileHandle.readBytes`/`writeBytes` are async, so
+`hash-bench.tsx` calls `readBytesSync`/`writeBytesSync`: the same blocking
+reads it measured under SDK 57.
+
+## SDK 58 native digest (`digest-bench.tsx`)
+
+Measures expo-file-system 58's `File.digest('SHA-256')`, which the app now
+uses for every file. Results: `../RESULTS.md` ("SDK 58 native digest").
+
+1. Copy `digest-bench.tsx` to `src/app/digest-bench.tsx`, and in
+   `src/app/_layout.tsx` skip the sign-in redirect for it, after the
+   `loading` check / `SplashScreen.hideAsync()`:
+
+   ```ts
+   if ((segments[0] as string) === 'digest-bench') return;
+   ```
+
+   No extra dependencies. `npx tsc --noEmit`, then build on a branch with
+   the workflow as above.
+2. Open it and read the results:
+
+   ```bash
+   adb shell am start -a android.intent.action.VIEW -d 'instacheese://digest-bench'
+   # optional query: ?sizes=128,1024&runs=3&only=env,check,digest,app,stale,fallback
+   adb logcat -d -s ReactNativeJS | grep DIGESTBENCH
+   ```
+
+It writes xorshift-pattern files (the same content as `common.mjs`) to the
+cache directory and checks each digest against node:crypto's. Phases:
+
+- `check`: `File.digest` of `"abc"`, of 1 MiB, and against expo-crypto's
+  digest of the same bytes.
+- `digest` / `app`: `File.digest` alone, and the app's `sha256OfFile`
+  (size check, digest, size check), `runs` times per size. During each, a
+  chained `setTimeout(0)` records the gaps between ticks on the JS thread
+  (`ticker`); `idle` is the same ticker with nothing else running.
+- `stale`: `sha256OfFile` with a recorded size one byte too big or too
+  small (expect `StaleFileError`), and on a missing file (a plain error).
+- `fallback`: the JS fallback (`sha256OfReader`, js-sha256, async
+  `readBytes`, `yieldToUI`) once over the first size.
+
 ## Hermes CLI (`hermes-cli/`)
 
 The same pure-JS cases, run by a desktop `hermes` built from the Hermes

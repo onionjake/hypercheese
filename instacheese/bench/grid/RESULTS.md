@@ -34,8 +34,9 @@ Node 22.
   render custom elements and carry their RN props (`mocks/react-native.js`).
   Like the real components, `Pressable` is `memo`, and expo-image's `Image`
   and the Ionicons are `PureComponent`s.
-- **The list is real.** `FlatList` is React Native 0.86's own
-  `Libraries/Lists/FlatList.js` on the real `@react-native/virtualized-lists`.
+- **The list is real.** `FlatList` is React Native's own (0.86 when these
+  results were recorded) `Libraries/Lists/FlatList.js` on the real
+  `@react-native/virtualized-lists`.
   Both are transpiled from their Flow sources. This keeps the behaviour this
   investigation depends on: windowing, `numColumns` row grouping (a fresh row
   array and a non-memoized renderer on every FlatList render, plus
@@ -247,3 +248,14 @@ still pays per event, though, so the emitter could do less:
 - The first measured `onLayout` of the list also triggers one extra render
   in the fixed screen, to learn the list width. It happens during setup and
   isn't counted.
+
+## Rerun under Expo SDK 58 (React Native 0.88, React 19.3)
+
+`node bench/grid/run.js --label after --reps 5` after the SDK 58 upgrade:
+the same scenarios and per-scenario commits, row/cell/icon renders and host
+updates as `results/after.txt`, except that one file upload cycle now
+re-renders 44 rows instead of 88 (and 217 host updates instead of 313).
+Busy times are within run-to-run noise. The React Compiler results are
+unchanged. The only harness change was to mock
+`react-native/react-private-interface`, which virtualized-lists 0.88 reads
+its feature flags through (`mocks/react-private-interface.js`).

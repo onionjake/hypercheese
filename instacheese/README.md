@@ -4,7 +4,8 @@ A family-only, Instagram-style mobile app for [HyperCheese](../README.md).
 Browse the family photo feed, tell everyone about your favorites, bookmark
 photos, comment, and upload straight from your phone's camera roll.
 
-Built with [Expo](https://expo.dev) / React Native (TypeScript, expo-router).
+Built with [Expo](https://expo.dev) SDK 58 / React Native 0.88 (TypeScript,
+expo-router).
 
 ## Features
 
@@ -52,8 +53,10 @@ npm install
 npx expo start
 ```
 
-Then scan the QR code with the Expo Go app, or press `i` / `a` for a
-simulator. Sign in with your HyperCheese server address, username, and
+Then scan the QR code with the Expo Go app (it must be a build that
+supports SDK 58), or press `i` / `a` for a simulator. Without a matching
+Expo Go, use a development build: `npx expo run:android` /
+`npx expo run:ios`. Sign in with your HyperCheese server address, username, and
 password.
 
 ## Android releases and installing with Obtainium
@@ -92,6 +95,11 @@ build an APK and upload it as a run artifact without creating a release;
 without the secrets those builds fall back to debug signing, so an APK from
 one can't update an installed release-signed app — uninstall first when
 switching.
+
+Release APKs are built without R8 (`expo-build-properties` in `app.json`
+turns off the minification SDK 58 enables by default). With R8 on, the app
+crashed at launch: WorkManager's Room database is created by reflection.
+Turn it back on only with keep rules and a full on-device test.
 
 iOS remains manual for now: `npx eas build --platform ios` → TestFlight.
 

@@ -1,0 +1,20 @@
+{"kind":"env","hermes":{"Bytecode Version":99,"Static Hermes":true,"JIT Enabled":false,"Builtins Frozen":false,"VM Experiments":0,"Build":"Release","GC":"hades (concurrent)","OSS Release Version":"260318099.0.5","Debugger Enabled":false,"CommonJS Modules":"None"},"dev":false,"platform":"android","constants":{"uiMode":"normal","reactNativeVersion":{"minor":88,"prerelease":null,"patch":1,"major":0},"isTesting":false,"Brand":"google","Manufacturer":"Google","Release":"15","Fingerprint":"google/sdk_gphone64_arm64/emu64a:15/AE3A.240806.043/12960925:userdebug/dev-keys","Serial":"unknown","Model":"sdk_gphone64_arm64","Version":35},"sizes":[128,1024],"runs":3}
+{"kind":"check","digestType":"function","abc":true,"oneMiB":true,"matchesExpoCrypto":true}
+{"kind":"idle","ticks":177,"maxGapMs":32.1,"p95GapMs":22,"p99GapMs":27.8,"medianGapMs":16.8}
+{"text":"file 128 MiB ready in 164.2 ms"}
+{"kind":"digest","fileMiB":128,"run":0,"ms":94.6,"mbps":1418.1,"correct":true,"ticker":{"ticks":5,"maxGapMs":21.4,"p95GapMs":21.4,"p99GapMs":21.4,"medianGapMs":16.8}}
+{"kind":"digest","fileMiB":128,"run":1,"ms":120.6,"mbps":1113.3,"correct":true,"ticker":{"ticks":7,"maxGapMs":18.6,"p95GapMs":18.6,"p99GapMs":18.6,"medianGapMs":15.8}}
+{"kind":"digest","fileMiB":128,"run":2,"ms":118.6,"mbps":1131.6,"correct":true,"ticker":{"ticks":7,"maxGapMs":22.9,"p95GapMs":22.9,"p99GapMs":22.9,"medianGapMs":15.9}}
+{"kind":"app","fileMiB":128,"run":0,"ms":134.2,"mbps":999.9,"correct":true,"ticker":{"ticks":8,"maxGapMs":17.8,"p95GapMs":17.8,"p99GapMs":17.8,"medianGapMs":16.5}}
+{"kind":"app","fileMiB":128,"run":1,"ms":118.8,"mbps":1130.2,"correct":true,"ticker":{"ticks":7,"maxGapMs":19.4,"p95GapMs":19.4,"p99GapMs":19.4,"medianGapMs":17.4}}
+{"kind":"app","fileMiB":128,"run":2,"ms":120.6,"mbps":1113,"correct":true,"ticker":{"ticks":7,"maxGapMs":18.1,"p95GapMs":18.1,"p99GapMs":18.1,"medianGapMs":16}}
+{"text":"file 1024 MiB ready in 1476.6 ms"}
+{"kind":"digest","fileMiB":1024,"run":0,"ms":1020.5,"mbps":1052.1,"correct":true,"ticker":{"ticks":61,"maxGapMs":22.9,"p95GapMs":19.2,"p99GapMs":22.9,"medianGapMs":16.7}}
+{"kind":"digest","fileMiB":1024,"run":1,"ms":773.8,"mbps":1387.7,"correct":true,"ticker":{"ticks":46,"maxGapMs":21.8,"p95GapMs":18.1,"p99GapMs":21.8,"medianGapMs":16.6}}
+{"kind":"digest","fileMiB":1024,"run":2,"ms":762.6,"mbps":1407.9,"correct":true,"ticker":{"ticks":45,"maxGapMs":18.6,"p95GapMs":17.1,"p99GapMs":18.6,"medianGapMs":16.6}}
+{"kind":"app","fileMiB":1024,"run":0,"ms":751.8,"mbps":1428.2,"correct":true,"ticker":{"ticks":45,"maxGapMs":22.9,"p95GapMs":22.2,"p99GapMs":22.9,"medianGapMs":16.6}}
+{"kind":"app","fileMiB":1024,"run":1,"ms":611.6,"mbps":1755.7,"correct":true,"ticker":{"ticks":36,"maxGapMs":22.2,"p95GapMs":19.9,"p99GapMs":22.2,"medianGapMs":17}}
+{"kind":"app","fileMiB":1024,"run":2,"ms":673.4,"mbps":1594.5,"correct":true,"ticker":{"ticks":40,"maxGapMs":21.9,"p95GapMs":21.6,"p99GapMs":21.9,"medianGapMs":16.3}}
+{"kind":"stale","shorterThanRecorded":"StaleFileError: Error: File is 134217728 bytes, expected 134217729","longerThanRecorded":"StaleFileError: Error: File is 134217728 bytes, expected 134217727","missing":"Error: Error: File is no longer available"}
+{"kind":"fallback","fileMiB":128,"ms":45702.2,"mbps":2.9,"correct":true,"ticker":{"ticks":1517,"maxGapMs":40.9,"p95GapMs":38,"p99GapMs":39.6,"medianGapMs":32.5}}
+{"kind":"done"}

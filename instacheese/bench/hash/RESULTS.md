@@ -28,6 +28,11 @@ V8's interpreter on this code, but still ~16× slower than V8's JIT. The
 only big win is native hashing: expo-crypto's one-shot digest runs at
 ~2.3 GB/s on the same emulator, ~480× js-sha256.
 
+**Since Expo SDK 58 the app hashes natively** with expo-file-system's
+streaming `File.digest('SHA-256')`: 1 GiB in under a second off the JS
+thread, vs ~5.7 min of JS-thread time with js-sha256. The JS loop is now
+only a fallback. See [SDK 58 native digest](#sdk-58-native-digest-measured).
+
 ## Method
 
 - Machine: Intel Xeon @ 2.1 GHz (4 cores, SHA-NI), Node v22.23.4. No Hermes
@@ -252,7 +257,11 @@ The app code is not changed elsewhere: `FileHandle` 64-bit offsets,
 `StaleFileError`, `yieldToUI` and the `:v2` cache key in
 `cachedSha256OfFile` work exactly as before.
 
-## Native hashing: recommended follow-up (not shipped)
+## Native hashing: recommended follow-up (superseded)
+
+*Written before SDK 58. The app now uses expo-file-system 58's
+`File.digest('SHA-256')`, which does what option 1 below describes; see
+"SDK 58 native digest (measured)".*
 
 Native hashing is the only change that removes the big-file hash from the JS
 thread, and the size of the gain is large. At ~1 GB/s native SHA-256 the
@@ -343,5 +352,59 @@ node bench/hash/run.mjs --quick              # smoke test (~40 s)
 ```
 
 Raw results: `results/*.json`, `results/full-run.log`, `results/equivalence.txt`,
-`results/device-emulator-hermes.jsonl`, `results/hermes-cli-linux-x64.jsonl`.
+`results/device-emulator-hermes.jsonl`, `results/hermes-cli-linux-x64.jsonl`,
+`results/device-emulator-sdk58-digest.jsonl`.
 On-device and Hermes CLI benchmark: `device/README.md`.
+
+## SDK 58 native digest (measured)
+
+Since Expo SDK 58, `sha256OfFile` (`src/lib/upload-protocol.ts`) hashes
+every file with expo-file-system 58's `File.digest('SHA-256')`. On
+Android this is an `AsyncFunction` coroutine in
+`withContext(Dispatchers.IO)` that feeds 64 KiB reads into
+`MessageDigest`, opening content:// through the ContentResolver. On iOS
+it feeds 64 KiB `FileHandle` reads into CryptoKit. Byte counts are 64-bit
+on both. The size is checked with `getInfoAsync` before and after the
+digest, so a file that is the wrong size, or changes size during the
+hash, is a `StaleFileError`. The JS loop above (js-sha256, now with
+async `readBytes`) is only the fallback.
+
+Release APK from the "Build InstaCheese APK" workflow (bench build at
+9d48a78, `device/digest-bench.tsx`), on the same Clickwork "Medium Phone
+(Arm)" emulator as above (`sdk_gphone64_arm64`, Android 15, 4 cores,
+Apple-silicon host). Hermes `260318099.0.5` (RN 0.88), `__DEV__` false.
+Raw lines: `results/device-emulator-sdk58-digest.jsonl`.
+
+- **Correct:** every digest matched node:crypto over the same pattern
+  files (128 MiB `6d3dd328…9d1c12`, 1 GiB `fac47e90…985216`), plus `"abc"`
+  and expo-crypto's digest of 1 MiB.
+- **Throughput** (3 runs each; MB = 10⁶ bytes):
+
+  | | 128 MiB | 1 GiB |
+  |---|---|---|
+  | `File.digest` alone | 95–121 ms (median 1.13 GB/s) | 0.76–1.02 s (median 1.39 GB/s) |
+  | app `sha256OfFile` (stat + digest + stat) | 119–134 ms (median 1.11 GB/s) | 0.61–0.75 s (median 1.59 GB/s) |
+  | JS fallback (js-sha256, async reads, `yieldToUI`), 1 run | 45.7 s (2.9 MB/s) | — |
+
+  That is about 400× the JS loop: a 1 GiB video goes from ~5.7 min with
+  js-sha256 (~8.5 min with @noble/hashes, as shipped before) to under a
+  second. The two `getInfoAsync` calls add a few ms. The files were read
+  right after being written, so they were likely in the page cache: a
+  camera-roll original read from flash may be I/O-bound below these
+  speeds, which is still far above any JS hash.
+- **JS thread stays free:** a chained `setTimeout(0)` ticker on the JS
+  thread ran throughout every native hash at its usual frame cadence. The
+  median gap was 16.6 ms, and the longest gap during any native hash was
+  22.9 ms, below the 32.1 ms longest gap of the same ticker with nothing
+  running (3 s idle baseline). The ticks fired per run match the hash
+  time / 16.6 ms, so none were lost. For comparison, during the JS
+  fallback the median gap was 32.5 ms and the longest 40.9 ms (the
+  time-sliced loop working as designed, but busy).
+- **Stale and missing files:** `sha256OfFile(uri, size ± 1)` threw
+  `StaleFileError` ("File is 134217728 bytes, expected 134217729" /
+  "…727"). A missing file threw a plain `Error` ("File is no longer
+  available"), as the queue expects.
+- Not covered: a `content://` URI (the app passes media-library `file://`
+  paths on Android), a file over 4 GiB on the device (the native loops
+  count bytes in 64-bit; the 4 GiB+ case is covered for the JS fallback
+  by the equivalence test), and iOS (no iOS build here).

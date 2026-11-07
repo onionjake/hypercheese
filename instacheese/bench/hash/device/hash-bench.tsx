@@ -236,7 +236,7 @@ export default function HashBench() {
             const t = now();
             const w = file.open(FileMode.ReadWrite);
             try {
-              for (let i = 0; i < fileMiB; i++) w.writeBytes(patterned(MiB, i * MiB));
+              for (let i = 0; i < fileMiB; i++) w.writeBytesSync(patterned(MiB, i * MiB));
             } finally {
               w.close();
             }
@@ -254,7 +254,7 @@ export default function HashBench() {
               try {
                 for (let read = 0; read < fileSize; ) {
                   const t1 = now();
-                  const chunk = h.readBytes(Math.min(readSize, fileSize - read));
+                  const chunk = h.readBytesSync(Math.min(readSize, fileSize - read));
                   maxRead = Math.max(maxRead, now() - t1);
                   if (chunk.length === 0) throw new Error('short read');
                   read += chunk.length;
@@ -299,7 +299,7 @@ export default function HashBench() {
               try {
                 // Same yield as the app's foreground yieldToUI: setTimeout(0).
                 digests[name] = await sha256OfReader(
-                  (length) => h.readBytes(length),
+                  (length) => h.readBytesSync(length),
                   fileSize,
                   async () => {
                     blocks.push(now() - resume);
